@@ -1,0 +1,188 @@
+const amazonApiService = require('../services/amazonApiService');
+const asyncHandler = require('../utils/asyncHandler');
+const {
+  sendSuccess,
+  sendError,
+  sendValidationError,
+} = require('../utils/responseHandler');
+const {
+  validateAWSCredentials,
+  validateAPIResult,
+  validateSearchResponse,
+  validateGetItemsResponse,
+} = require('../utils/awsApiValidator');
+
+// @desc    Search items on Amazon
+// @route   POST /api/amazon/search
+// @access  Public (or Protected based on your needs)
+exports.searchItems = asyncHandler(async (req, res) => {
+  // Validate AWS credentials first
+  const credentialsCheck = validateAWSCredentials();
+  if (!credentialsCheck.valid) {
+    return sendError(
+      res,
+      `AWS API credentials not configured. Missing: ${credentialsCheck.missing.join(', ')}`,
+      500
+    );
+  }
+
+  const { keywords, searchIndex, itemCount, minPrice, maxPrice, brand } = req.body;
+
+  if (!keywords) {
+    return sendValidationError(res, 'Keywords are required');
+  }
+
+  const result = await amazonApiService.searchItems(keywords, {
+    searchIndex: searchIndex || 'All',
+    itemCount: itemCount || 10,
+    minPrice,
+    maxPrice,
+    brand,
+  });
+
+  // Validate API result
+  const apiValidation = validateAPIResult(result);
+  if (!apiValidation.valid) {
+    // Determine appropriate status code
+    const statusCode = apiValidation.errorDetails?.statusCode || 
+                      (apiValidation.errorDetails?.code === 'ServiceUnavailable' ? 503 : 400);
+    
+    return sendError(
+      res,
+      apiValidation.error,
+      statusCode,
+      apiValidation.errorDetails || null
+    );
+  }
+
+  // Validate response structure
+  const responseValidation = validateSearchResponse(result.data);
+  if (!responseValidation.valid) {
+    return sendError(
+      res,
+      `Invalid response from Amazon API: ${responseValidation.errors.join(', ')}`,
+      400,
+      result.data
+    );
+  }
+
+  return sendSuccess(res, { ...result.data, validated: true }, 'Items retrieved successfully');
+});
+
+// @desc    Get item details by ASIN
+// @route   POST /api/amazon/items
+// @access  Public (or Protected based on your needs)
+exports.getItems = asyncHandler(async (req, res) => {
+  // Validate AWS credentials first
+  const credentialsCheck = validateAWSCredentials();
+  if (!credentialsCheck.valid) {
+    return sendError(
+      res,
+      `AWS API credentials not configured. Missing: ${credentialsCheck.missing.join(', ')}`,
+      500
+    );
+  }
+
+  const { itemIds } = req.body;
+
+  if (!itemIds || (Array.isArray(itemIds) && itemIds.length === 0)) {
+    return sendValidationError(res, 'ItemIds are required');
+  }
+
+  // Validate ASIN format if single item
+  if (!Array.isArray(itemIds)) {
+    if (!/^[A-Z0-9]{10}$/i.test(itemIds)) {
+      return sendValidationError(res, 'Invalid ASIN format. ASIN must be 10 alphanumeric characters');
+    }
+  } else {
+    // Validate all ASINs in array
+    const invalidAsins = itemIds.filter((asin) => !/^[A-Z0-9]{10}$/i.test(asin));
+    if (invalidAsins.length > 0) {
+      return sendValidationError(
+        res,
+        `Invalid ASIN format(s): ${invalidAsins.join(', ')}. ASIN must be 10 alphanumeric characters`
+      );
+    }
+  }
+
+  const result = await amazonApiService.getItems(itemIds);
+
+  // Validate API result
+  const apiValidation = validateAPIResult(result);
+  if (!apiValidation.valid) {
+    // Determine appropriate status code
+    const statusCode = apiValidation.errorDetails?.statusCode || 
+                      (apiValidation.errorDetails?.code === 'ServiceUnavailable' ? 503 : 400);
+    
+    return sendError(
+      res,
+      apiValidation.error,
+      statusCode,
+      apiValidation.errorDetails || null
+    );
+  }
+
+  // Validate response structure
+  const responseValidation = validateGetItemsResponse(result.data);
+  if (!responseValidation.valid && !result.data?.ItemsResult) {
+    return sendError(
+      res,
+      `Invalid response from Amazon API: ${responseValidation.errors.join(', ')}`,
+      400,
+      result.data
+    );
+  }
+
+  return sendSuccess(res, { ...result.data, validated: true }, 'Items retrieved successfully');
+});
+
+// @desc    Get browse nodes
+// @route   POST /api/amazon/browse-nodes
+// @access  Public (or Protected based on your needs)
+exports.getBrowseNodes = asyncHandler(async (req, res) => {
+  // Validate AWS credentials first
+  const credentialsCheck = validateAWSCredentials();
+  if (!credentialsCheck.valid) {
+    return sendError(
+      res,
+      `AWS API credentials not configured. Missing: ${credentialsCheck.missing.join(', ')}`,
+      500
+    );
+  }
+
+  const { browseNodeIds } = req.body;
+
+  if (!browseNodeIds || (Array.isArray(browseNodeIds) && browseNodeIds.length === 0)) {
+    return sendValidationError(res, 'BrowseNodeIds are required');
+  }
+
+  const result = await amazonApiService.getBrowseNodes(browseNodeIds);
+
+  // Validate API result
+  const apiValidation = validateAPIResult(result);
+  if (!apiValidation.valid) {
+    // Determine appropriate status code
+    const statusCode = apiValidation.errorDetails?.statusCode || 
+                      (apiValidation.errorDetails?.code === 'ServiceUnavailable' ? 503 : 400);
+    
+    return sendError(
+      res,
+      apiValidation.error,
+      statusCode,
+      apiValidation.errorDetails || null
+    );
+  }
+
+  // Check for errors in response (AWS sometimes returns errors in response body)
+  if (result.data?.Errors && Array.isArray(result.data.Errors) && result.data.Errors.length > 0) {
+    return sendError(
+      res,
+      `Error from Amazon API: ${result.data.Errors.map((e) => e.Message || e.Code).join(', ')}`,
+      400,
+      result.data.Errors
+    );
+  }
+
+  return sendSuccess(res, { ...result.data, validated: true }, 'Browse nodes retrieved successfully');
+});
+
