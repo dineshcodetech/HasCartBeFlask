@@ -57,9 +57,47 @@ exports.getAllProducts = asyncHandler(async (req, res) => {
   // Validate API result
   const apiValidation = validateAPIResult(result);
   if (!apiValidation.valid) {
-    // Determine appropriate status code
-    const statusCode = apiValidation.errorDetails?.statusCode || 
-                      (apiValidation.errorDetails?.code === 'ServiceUnavailable' ? 503 : 400);
+    // Determine appropriate status code based on error details
+    // Use the statusCode from errorDetails if available, otherwise infer from error type
+    let statusCode = apiValidation.errorDetails?.statusCode;
+    
+    if (!statusCode) {
+      const errorType = apiValidation.errorDetails?.type;
+      const originalError = apiValidation.errorDetails?.originalError;
+      
+      // Check type field first (from errorDetails)
+      if (errorType === 'ServiceUnavailable') {
+        statusCode = 503;
+      } else if (errorType === 'BadRequest') {
+        statusCode = 400;
+      } else if (errorType === 'Unauthorized') {
+        statusCode = 401;
+      } else if (errorType === 'Forbidden') {
+        statusCode = 403;
+      } else if (errorType === 'TooManyRequests') {
+        statusCode = 429;
+      } else if (errorType === 'ServerError') {
+        statusCode = 500;
+      } else if (originalError) {
+        // Fallback to checking originalError Type field
+        if (originalError.Type === 'ServiceUnavailable') {
+          statusCode = 503;
+        } else if (originalError.Type === 'BadRequest' || originalError.Code?.startsWith('HTTP_400')) {
+          statusCode = 400;
+        } else if (originalError.Type === 'Unauthorized' || originalError.Code?.startsWith('HTTP_401')) {
+          statusCode = 401;
+        } else if (originalError.Type === 'Forbidden' || originalError.Code?.startsWith('HTTP_403')) {
+          statusCode = 403;
+        } else if (originalError.Type === 'TooManyRequests' || originalError.Code?.startsWith('HTTP_429')) {
+          statusCode = 429;
+        } else if (originalError.Type === 'ServerError' || (originalError.Code && /^HTTP_5\d{2}$/.test(originalError.Code))) {
+          statusCode = 500;
+        }
+      }
+    }
+    
+    // Default to 400 if status code still not determined
+    statusCode = statusCode || 400;
     
     return sendError(
       res,
@@ -141,9 +179,47 @@ exports.getProductByAsin = asyncHandler(async (req, res) => {
   // Validate API result
   const apiValidation = validateAPIResult(result);
   if (!apiValidation.valid) {
-    // Determine appropriate status code
-    const statusCode = apiValidation.errorDetails?.statusCode || 
-                      (apiValidation.errorDetails?.code === 'ServiceUnavailable' ? 503 : 400);
+    // Determine appropriate status code based on error details
+    // Use the statusCode from errorDetails if available, otherwise infer from error type
+    let statusCode = apiValidation.errorDetails?.statusCode;
+    
+    if (!statusCode) {
+      const errorType = apiValidation.errorDetails?.type;
+      const originalError = apiValidation.errorDetails?.originalError;
+      
+      // Check type field first (from errorDetails)
+      if (errorType === 'ServiceUnavailable') {
+        statusCode = 503;
+      } else if (errorType === 'BadRequest') {
+        statusCode = 400;
+      } else if (errorType === 'Unauthorized') {
+        statusCode = 401;
+      } else if (errorType === 'Forbidden') {
+        statusCode = 403;
+      } else if (errorType === 'TooManyRequests') {
+        statusCode = 429;
+      } else if (errorType === 'ServerError') {
+        statusCode = 500;
+      } else if (originalError) {
+        // Fallback to checking originalError Type field
+        if (originalError.Type === 'ServiceUnavailable') {
+          statusCode = 503;
+        } else if (originalError.Type === 'BadRequest' || originalError.Code?.startsWith('HTTP_400')) {
+          statusCode = 400;
+        } else if (originalError.Type === 'Unauthorized' || originalError.Code?.startsWith('HTTP_401')) {
+          statusCode = 401;
+        } else if (originalError.Type === 'Forbidden' || originalError.Code?.startsWith('HTTP_403')) {
+          statusCode = 403;
+        } else if (originalError.Type === 'TooManyRequests' || originalError.Code?.startsWith('HTTP_429')) {
+          statusCode = 429;
+        } else if (originalError.Type === 'ServerError' || (originalError.Code && /^HTTP_5\d{2}$/.test(originalError.Code))) {
+          statusCode = 500;
+        }
+      }
+    }
+    
+    // Default to 400 if status code still not determined
+    statusCode = statusCode || 400;
     
     return sendError(
       res,

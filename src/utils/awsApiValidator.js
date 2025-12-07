@@ -118,6 +118,19 @@ const validateAPIResult = (result) => {
         errorMessage = result.error.Message || result.error.message || errorMessage;
         errorCode = result.error.Code || result.error.code || errorCode;
         statusCode = result.error.StatusCode || result.statusCode || null;
+        // Preserve the Type field if it exists (important for proper error handling)
+        const errorType = result.error.Type || result.error.type || null;
+        
+        return { 
+          valid: false, 
+          error: errorMessage,
+          errorDetails: {
+            code: errorCode,
+            statusCode: statusCode,
+            type: errorType,
+            originalError: result.error,
+          }
+        };
       } else if (typeof result.error === 'string') {
         // Check if it's HTML
         if (result.error.trim().startsWith('<!DOCTYPE')) {
