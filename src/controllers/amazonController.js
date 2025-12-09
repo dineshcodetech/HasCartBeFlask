@@ -121,20 +121,24 @@ exports.getItems = asyncHandler(async (req, res) => {
     );
   }
 
-  const { itemIds } = req.body;
+  // Accept full payload structure or just itemIds for backward compatibility
+  const { ItemIds, itemIds, ItemIdType, PartnerTag, PartnerType, Marketplace, Resources } = req.body;
 
-  if (!itemIds || (Array.isArray(itemIds) && itemIds.length === 0)) {
+  // Determine itemIds from either ItemIds (capital) or itemIds (lowercase)
+  const finalItemIds = ItemIds || itemIds;
+
+  if (!finalItemIds || (Array.isArray(finalItemIds) && finalItemIds.length === 0)) {
     return sendValidationError(res, 'ItemIds are required');
   }
 
   // Validate ASIN format if single item
-  if (!Array.isArray(itemIds)) {
-    if (!/^[A-Z0-9]{10}$/i.test(itemIds)) {
+  if (!Array.isArray(finalItemIds)) {
+    if (!/^[A-Z0-9]{10}$/i.test(finalItemIds)) {
       return sendValidationError(res, 'Invalid ASIN format. ASIN must be 10 alphanumeric characters');
     }
   } else {
     // Validate all ASINs in array
-    const invalidAsins = itemIds.filter((asin) => !/^[A-Z0-9]{10}$/i.test(asin));
+    const invalidAsins = finalItemIds.filter((asin) => !/^[A-Z0-9]{10}$/i.test(asin));
     if (invalidAsins.length > 0) {
       return sendValidationError(
         res,
@@ -143,7 +147,24 @@ exports.getItems = asyncHandler(async (req, res) => {
     }
   }
 
-  const result = await amazonApiService.getItems(itemIds);
+  // If full payload structure is provided, use it; otherwise use defaults
+  const options = {};
+  if (Resources && Array.isArray(Resources)) {
+    options.resources = Resources;
+  }
+  if (ItemIdType && ItemIdType !== 'ASIN') {
+    return sendValidationError(res, 'ItemIdType must be "ASIN"');
+  }
+  if (PartnerTag || PartnerType || Marketplace) {
+    // These are validated by the service, but we can log them
+    console.log('[Amazon Controller] Custom payload fields provided:', {
+      hasPartnerTag: !!PartnerTag,
+      hasPartnerType: !!PartnerType,
+      hasMarketplace: !!Marketplace,
+    });
+  }
+
+  const result = await amazonApiService.getItems(finalItemIds, options);
 
   // Validate API result
   const apiValidation = validateAPIResult(result);
