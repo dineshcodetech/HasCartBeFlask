@@ -1,0 +1,45 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Configure SSH for EC2
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to EC2
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << EOF
+            cd /home/ubuntu/HasCartBeFlask
+            
+            # Configure git remote with token for authentication
+            git remote set-url origin https://${{ secrets.SEC_PAT }}@github.com/${{ github.repository }}.git
+            
+            # Pull latest code
+            git pull origin main
+            
+            # Stop existing containers
+            docker-compose down
+            
+            # Build and start new containers
+            docker-compose build --no-cache
+            docker-compose up -d
+            
+            # Clean up old images
+            docker image prune -f
+            
+            # Show running containers
+            docker-compose ps
+          EOF
+
