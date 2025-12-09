@@ -3,17 +3,25 @@ version: '3.8'
 services:
   # Node.js Express Application
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hascart-api:latest
     container_name: hascart-api
     ports:
       - "3000:3000"
     env_file:
       - .env
     environment:
-      - NODE_ENV=${NODE_ENV:-development}
+      - NODE_ENV=${NODE_ENV:-production}
       - PORT=${PORT:-3000}
       - MONGODB_URI=${MONGODB_URI}
     volumes:
-      - .:/app
       - /app/node_modules
     restart: unless-stopped
+    networks:
+      - hascart-network
+
+networks:
+  hascart-network:
+    driver: bridge
