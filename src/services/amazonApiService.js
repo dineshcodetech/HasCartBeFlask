@@ -7,48 +7,48 @@ class AmazonAPIService {
     this.secretKey = process.env.AWS_SECRET_KEY;
     this.partnerTag = process.env.AWS_PARTNER_TAG;
     this.marketplace = process.env.AWS_MARKETPLACE || 'www.amazon.in';
-    
+
     // Set region based on marketplace if not explicitly provided
     // According to Amazon PA-API 5.0 documentation, each marketplace has a specific AWS region
     // This is used for AWS signature generation
     this.region = process.env.AWS_REGION || this.getRegionFromMarketplace(this.marketplace);
-    
+
     // Get marketplace-specific base URL
     // e.g., https://webservices.amazon.in/paapi5 for India
     // e.g., https://webservices.amazon.com/paapi5 for US
     this.baseUrl = this.getBaseUrlFromMarketplace(this.marketplace);
-    
+
     // Default resources to request from Amazon API (can be overridden in options)
-    this.defaultSearchResources = process.env.AWS_SEARCH_RESOURCES 
+    this.defaultSearchResources = process.env.AWS_SEARCH_RESOURCES
       ? JSON.parse(process.env.AWS_SEARCH_RESOURCES)
       : [
-          'Images.Primary.Large',
-          'ItemInfo.Title',
-          'ItemInfo.Features',
-          'ItemInfo.TechnicalInfo',
-          'Offers.Listings.Price',
-          'Offers.Listings.Condition',
-          'Offers.Listings.DeliveryInfo.IsPrimeEligible',
-          'CustomerReviews.StarRating',
-          'CustomerReviews.Count'
-        ];
-    
+        'Images.Primary.Large',
+        'ItemInfo.Title',
+        'ItemInfo.Features',
+        'ItemInfo.TechnicalInfo',
+        'Offers.Listings.Price',
+        'Offers.Listings.Condition',
+        'Offers.Listings.DeliveryInfo.IsPrimeEligible',
+        'CustomerReviews.StarRating',
+        'CustomerReviews.Count'
+      ];
+
     this.defaultGetItemsResources = process.env.AWS_GETITEMS_RESOURCES
       ? JSON.parse(process.env.AWS_GETITEMS_RESOURCES)
       : [
-          'Images.Primary.Large',
-          'ItemInfo.Title',
-          'ItemInfo.Features',
-          'ItemInfo.ContentInfo',
-          'ItemInfo.TechnicalInfo',
-          'ItemInfo.ProductInfo',
-          'Offers.Listings.Price',
-          'Offers.Listings.Condition',
-          'Offers.Listings.DeliveryInfo.IsPrimeEligible',
-          'CustomerReviews.StarRating',
-          'CustomerReviews.Count'
-        ];
-    
+        'Images.Primary.Large',
+        'ItemInfo.Title',
+        'ItemInfo.Features',
+        'ItemInfo.ContentInfo',
+        'ItemInfo.TechnicalInfo',
+        'ItemInfo.ProductInfo',
+        'Offers.Listings.Price',
+        'Offers.Listings.Condition',
+        'Offers.Listings.DeliveryInfo.IsPrimeEligible',
+        'CustomerReviews.StarRating',
+        'CustomerReviews.Count'
+      ];
+
     console.log('[Amazon API] Initialized:', {
       marketplace: this.marketplace,
       region: this.region,
@@ -133,7 +133,7 @@ class AmazonAPIService {
   generateSignature(method, path, headers, payload, host) {
     const algorithm = 'AWS4-HMAC-SHA256';
     const service = 'ProductAdvertisingAPI';
-    
+
     // Extract timestamp from X-Amz-Date header (must already be set)
     const timestamp = headers['X-Amz-Date'] || headers['x-amz-date'];
     if (!timestamp) {
@@ -232,7 +232,7 @@ class AmazonAPIService {
       const method = 'POST';
       const payloadString = JSON.stringify(payload);
       const url = `${this.baseUrl}${operationPath}`;
-      
+
       // Extract host and path for signature
       const urlObj = new URL(this.baseUrl);
       const host = urlObj.host; // e.g., webservices.amazon.in
@@ -291,13 +291,13 @@ class AmazonAPIService {
         let errorMessage = 'Amazon API returned an unexpected HTML response';
         let errorType = 'InvalidResponse';
         const statusCode = response.status || 503;
-        
+
         // Try to extract title from HTML
         const titleMatch = responseData.match(/<title>(.*?)<\/title>/i);
         if (titleMatch) {
           errorMessage = titleMatch[1].trim();
         }
-        
+
         // Determine error type based on status code
         if (statusCode === 503) {
           errorType = 'ServiceUnavailable';
@@ -306,7 +306,7 @@ class AmazonAPIService {
           errorType = 'BadRequest';
           errorMessage = errorMessage || 'Invalid request to Amazon API';
         }
-        
+
         return {
           success: false,
           error: {
@@ -348,19 +348,19 @@ class AmazonAPIService {
       if (error.response) {
         const statusCode = error.response.status;
         let errorData = error.response.data;
-        
+
         // Check if response is HTML (error pages)
         if (typeof errorData === 'string' && errorData.trim().startsWith('<!DOCTYPE')) {
           // Extract meaningful error message from HTML
           let errorMessage = 'Amazon API request failed';
           let errorType = 'RequestError';
-          
+
           // Try to extract title from HTML
           const titleMatch = errorData.match(/<title>(.*?)<\/title>/i);
           if (titleMatch) {
             errorMessage = titleMatch[1].trim();
           }
-          
+
           // Set appropriate error type based on status code
           // According to Amazon PA-API 5.0 documentation:
           // - 400 = Bad Request (invalid parameters, credentials, etc.)
@@ -388,7 +388,7 @@ class AmazonAPIService {
             errorType = 'ServerError';
             errorMessage = errorMessage || 'Amazon API server error';
           }
-          
+
           return {
             success: false,
             error: {
@@ -400,7 +400,7 @@ class AmazonAPIService {
             statusCode,
           };
         }
-        
+
         // Handle JSON error responses
         if (typeof errorData === 'object' && errorData !== null) {
           return {
@@ -409,7 +409,7 @@ class AmazonAPIService {
             statusCode,
           };
         }
-        
+
         // Handle string error responses
         return {
           success: false,
@@ -478,8 +478,14 @@ class AmazonAPIService {
       PartnerTag: this.partnerTag,
       PartnerType: 'Associates',
       Marketplace: this.marketplace,
+      Marketplace: this.marketplace,
       Resources: options.resources || this.defaultSearchResources,
     };
+
+    // Add pagination (1-10)
+    if (options.itemPage) {
+      payload.ItemPage = parseInt(options.itemPage);
+    }
 
     // Add optional filters (only include if provided)
     if (options.minPrice !== undefined && options.minPrice !== null) {

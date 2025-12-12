@@ -23,8 +23,8 @@ const userSchema = new mongoose.Schema(
     },
     mobile: {
       type: String,
-      required: [true, 'Please provide a mobile number'],
       unique: true,
+      sparse: true, // Allow null values but ensure uniqueness when present
       trim: true,
     },
     role: {

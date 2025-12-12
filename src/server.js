@@ -10,6 +10,8 @@ const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const referralRoutes = require('./routes/referralRoutes');
 const amazonRoutes = require('./routes/amazonRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
 
 // Connect to database
 connectDB();
@@ -35,6 +37,8 @@ app.get('/', (req, res) => {
       amazon: '/api/amazon',
       referral: '/api/referral',
       admin: '/api/admin',
+      categories: '/api/admin/categories',
+      analytics: '/api/analytics',
     },
   });
 });
@@ -42,9 +46,11 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/admin/categories', categoryRoutes); // Moved up to bypass adminRoutes auth
 app.use('/api/admin', adminRoutes);
 app.use('/api/referral', referralRoutes);
 app.use('/api/amazon', amazonRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 const { sendNotFound, sendError, sendValidationError } = require('./utils/responseHandler');
 

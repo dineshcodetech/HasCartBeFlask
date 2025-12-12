@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getAllUsers, getDashboard, adminLogin } = require('../controllers/adminController');
+const { getProductClicks } = require('../controllers/analyticsController');
 const { protect, authorize } = require('../middleware/auth');
 const adminProductRoutes = require('./adminProductRoutes');
 
@@ -13,6 +14,7 @@ router.use(authorize('admin'));
 
 router.get('/dashboard', getDashboard);
 router.get('/users', getAllUsers);
+router.get('/analytics/clicks', getProductClicks);
 
 // Product management routes
 router.use('/products', adminProductRoutes);

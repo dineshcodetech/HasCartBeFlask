@@ -45,10 +45,15 @@ exports.getAllProducts = asyncHandler(async (req, res) => {
   // Use limit if provided, otherwise use itemCount, default to 10
   const itemCountNum = parseInt(limit || itemCount || 10);
 
+  // Validate page number (Amazon PA-API limit is 10 pages)
+  const pageNum = parseInt(page);
+  const itemPage = pageNum > 10 ? 10 : (pageNum < 1 ? 1 : pageNum);
+
   // Call AWS API
   const result = await amazonApiService.searchItems(searchKeywords, {
     searchIndex,
     itemCount: itemCountNum,
+    itemPage: itemPage,
     minPrice: minPrice ? parseInt(minPrice) : undefined,
     maxPrice: maxPrice ? parseInt(maxPrice) : undefined,
     brand,
@@ -60,11 +65,11 @@ exports.getAllProducts = asyncHandler(async (req, res) => {
     // Determine appropriate status code based on error details
     // Use the statusCode from errorDetails if available, otherwise infer from error type
     let statusCode = apiValidation.errorDetails?.statusCode;
-    
+
     if (!statusCode) {
       const errorType = apiValidation.errorDetails?.type;
       const originalError = apiValidation.errorDetails?.originalError;
-      
+
       // Check type field first (from errorDetails)
       if (errorType === 'ServiceUnavailable') {
         statusCode = 503;
@@ -95,10 +100,10 @@ exports.getAllProducts = asyncHandler(async (req, res) => {
         }
       }
     }
-    
+
     // Default to 400 if status code still not determined
     statusCode = statusCode || 400;
-    
+
     return sendError(
       res,
       apiValidation.error,
@@ -182,11 +187,11 @@ exports.getProductByAsin = asyncHandler(async (req, res) => {
     // Determine appropriate status code based on error details
     // Use the statusCode from errorDetails if available, otherwise infer from error type
     let statusCode = apiValidation.errorDetails?.statusCode;
-    
+
     if (!statusCode) {
       const errorType = apiValidation.errorDetails?.type;
       const originalError = apiValidation.errorDetails?.originalError;
-      
+
       // Check type field first (from errorDetails)
       if (errorType === 'ServiceUnavailable') {
         statusCode = 503;
@@ -217,10 +222,10 @@ exports.getProductByAsin = asyncHandler(async (req, res) => {
         }
       }
     }
-    
+
     // Default to 400 if status code still not determined
     statusCode = statusCode || 400;
-    
+
     return sendError(
       res,
       apiValidation.error,
