@@ -108,14 +108,21 @@ exports.signup = asyncHandler(async (req, res) => {
   }
 
   // Create user
-  const user = await User.create({
+  // Build user object - only add mobile if present to avoid unique index issues with null
+  const userData = {
     name: name.trim(),
     email: email.toLowerCase().trim(),
     password: password,
-    mobile: formattedMobile,
     role: 'user',
     referredBy: referredBy,
-  });
+  };
+
+  if (formattedMobile) {
+    userData.mobile = formattedMobile;
+  }
+
+  // Create user
+  const user = await User.create(userData);
 
   // Generate token for auto-login after signup
   const token = generateToken(user._id.toString());

@@ -24,11 +24,15 @@ exports.protect = async (req, res, next) => {
     req.user = await User.findById(decoded.id).select('-password');
 
     if (!req.user) {
+      console.error('Auth Middleware: User found in DB is null');
       return sendUnauthorized(res, 'User not found');
     }
 
+    console.log('Auth Middleware Success: User:', req.user.email, 'Role:', req.user.role);
+
     next();
   } catch (error) {
+    console.error('Auth Middleware Error:', error.message);
     return sendUnauthorized(res, 'Not authorized to access this route');
   }
 };

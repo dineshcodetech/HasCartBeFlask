@@ -12,6 +12,7 @@ const referralRoutes = require('./routes/referralRoutes');
 const amazonRoutes = require('./routes/amazonRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const bannerRoutes = require('./routes/bannerRoutes');
 
 // Connect to database
 connectDB();
@@ -20,7 +21,11 @@ connectDB();
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: '*', // Allow all origins
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -51,6 +56,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/referral', referralRoutes);
 app.use('/api/amazon', amazonRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/banners', bannerRoutes);
 
 const { sendNotFound, sendError, sendValidationError } = require('./utils/responseHandler');
 
@@ -64,7 +70,7 @@ app.use((err, req, res, next) => {
   // Handle MongoDB duplicate key error
   if (err.code === 11000) {
     const field = Object.keys(err.keyPattern || {})[0] || 'field';
-    return sendError(res, `Duplicate value for ${field}. This ${field} already exists.`, 409);
+    return sendError(res, `This ${field} is already in use. Please use a different ${field}.`, 409);
   }
 
   // Handle MongoDB validation errors
@@ -87,7 +93,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 3000;
+const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
