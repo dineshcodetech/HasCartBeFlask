@@ -18,17 +18,24 @@ const categorySchema = new mongoose.Schema(
       trim: true,
       default: 'All',
       enum: [
-        'All', 'Electronics', 'Books', 'Clothing', 'HomeGarden', 'SportsOutdoors',
-        'Automotive', 'Beauty', 'HealthPersonalCare', 'ToysGames', 'Computers',
-        'Music', 'MoviesTV', 'VideoGames', 'PetSupplies', 'OfficeProducts',
-        'ToolsHomeImprovement', 'Baby', 'GroceryGourmetFood', 'Jewelry', 'Watches',
-        'Shoes', 'Handmade', 'Industrial'
+        'All', 'Apparel', 'Appliances', 'Automotive', 'Baby', 'Beauty', 'Books',
+        'Collectibles', 'Computers', 'Electronics', 'EverythingElse', 'Fashion',
+        'Furniture', 'GardenAndOutdoor', 'GiftCards', 'GroceryAndGourmetFood',
+        'HealthPersonalCare', 'HomeAndKitchen', 'Industrial', 'Jewelry', 'KindleStore',
+        'Luggage', 'LuxuryBeauty', 'MobileApps', 'MoviesAndTV', 'Music',
+        'MusicalInstruments', 'OfficeProducts', 'PetSupplies', 'Shoes', 'Software',
+        'SportsAndOutdoors', 'ToolsAndHomeImprovement', 'ToysAndGames',
+        'VideoGames', 'Watches'
       ],
     },
+    searchQueries: {
+      type: [String],
+      default: [],
+    },
+    // Keep for migration/legacy support temporarily
     searchQuery: {
       type: String,
       trim: true,
-      default: '',
     },
     percentage: {
       type: Number,
@@ -36,6 +43,10 @@ const categorySchema = new mongoose.Schema(
       min: [0, 'Percentage cannot be less than 0'],
       max: [100, 'Percentage cannot exceed 100'],
       default: 0,
+    },
+    selectedProducts: {
+      type: [String],
+      default: [],
     },
     status: {
       type: String,
@@ -47,6 +58,14 @@ const categorySchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Migration hook: if searchQuery exists but searchQueries is empty, migrate it
+categorySchema.pre('save', function (next) {
+  if (this.searchQuery && (!this.searchQueries || this.searchQueries.length === 0)) {
+    this.searchQueries = [this.searchQuery];
+  }
+  next();
+});
 
 // Indexes for better query performance
 categorySchema.index({ name: 1 });

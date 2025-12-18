@@ -1,4 +1,7 @@
 const User = require('../models/User');
+const Product = require('../models/Product');
+const Category = require('../models/Category');
+const ProductClick = require('../models/ProductClick');
 const asyncHandler = require('../utils/asyncHandler');
 const { generateToken } = require('../utils/tokenUtils');
 const {
@@ -43,7 +46,7 @@ exports.adminLogin = asyncHandler(async (req, res) => {
   let token;
   try {
     token = generateToken(user._id.toString());
-    
+
     // Validate token was generated
     if (!token || typeof token !== 'string' || token.trim().length === 0) {
       throw new Error('Token generation returned invalid value');
@@ -81,16 +84,41 @@ exports.getAllUsers = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/dashboard
 // @access  Private/Admin
 exports.getDashboard = asyncHandler(async (req, res) => {
-  const totalUsers = await User.countDocuments();
-  const totalAdmins = await User.countDocuments({ role: 'admin' });
-  const totalAgents = await User.countDocuments({ role: 'agent' });
-  const totalCustomers = await User.countDocuments({ role: 'user' });
+  const [
+    totalUsers,
+    totalAdmins,
+    totalAgents,
+    totalCustomers,
+    totalProducts,
+    totalCategories,
+    totalClicks,
+    recentUsers,
+    recentClicks,
+  ] = await Promise.all([
+    User.countDocuments(),
+    User.countDocuments({ role: 'admin' }),
+    User.countDocuments({ role: 'agent' }),
+    User.countDocuments({ role: 'user' }),
+    Product.countDocuments(),
+    Category.countDocuments(),
+    ProductClick.countDocuments(),
+    User.find().sort({ createdAt: -1 }).limit(5).select('name email role createdAt'),
+    ProductClick.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('user', 'name email')
+  ]);
 
   return sendSuccess(res, {
     totalUsers,
     totalAdmins,
     totalAgents,
     totalCustomers,
+    totalProducts,
+    totalCategories,
+    totalClicks,
+    recentUsers,
+    recentClicks,
     regularUsers: totalCustomers,
   }, 'Dashboard stats retrieved successfully');
 });

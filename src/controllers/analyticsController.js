@@ -5,31 +5,40 @@ const { sendSuccess, sendError, sendValidationError } = require('../utils/respon
 
 // @desc    Track product click (View on Amazon)
 // @route   POST /api/analytics/track-click
-// @access  Private
+// @access  Public/Private
 exports.trackProductClick = asyncHandler(async (req, res) => {
-    const { asin, productName, category, price, imageUrl, productUrl } = req.body;
-    const userId = req.user.id; // From auth middleware
+    const { asin, productName, category, price, imageUrl, productUrl, referralCode } = req.body;
+    const userId = req.user ? req.user.id : null; // User may or may not be logged in
 
     if (!asin || !productName) {
         return sendValidationError(res, 'ASIN and Product Name are required');
     }
 
-    // Find user to get referrer info
-    const user = await User.findById(userId);
+    let agentId = null;
 
-    if (!user) {
-        return sendError(res, 'User not found', 404);
+    if (userId) {
+        // Find user to get referrer info
+        const user = await User.findById(userId);
+        if (user) {
+            agentId = user.referredBy || null;
+        }
+    } else if (referralCode) {
+        // Guest user with a referral code from a shared link
+        const agent = await User.findOne({ referralCode: referralCode.toUpperCase() });
+        if (agent) {
+            agentId = agent._id;
+        }
     }
 
     const productClick = await ProductClick.create({
-        user: userId,
+        user: userId || null, // Allow null for guest users
         asin,
         productName,
         category: category || 'Uncategorized',
         price: price || 0,
         imageUrl,
         productUrl,
-        agent: user.referredBy || null,
+        agent: agentId,
     });
 
     return sendSuccess(res, productClick, 'Click tracked successfully', 201);
@@ -95,4 +104,18 @@ exports.getProductClicks = asyncHandler(async (req, res) => {
             totalPages: Math.ceil(total / limitNum),
         },
     }, 'Click data retrieved successfully');
+});
+
+// @desc    Get current user's product clicks (Personalized history)
+// @route   GET /api/analytics/my-clicks
+// @access  Private
+exports.getMyProductClicks = asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const limitNum = 10;
+
+    const clicks = await ProductClick.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(limitNum);
+
+    return sendSuccess(res, clicks, 'Personal history retrieved successfully');
 });

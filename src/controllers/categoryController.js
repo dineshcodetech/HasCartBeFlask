@@ -61,7 +61,7 @@ exports.getCategoryById = asyncHandler(async (req, res) => {
 // @route   POST /api/admin/categories
 // @access  Private/Admin
 exports.createCategory = asyncHandler(async (req, res) => {
-    const { name, description, percentage, status, amazonSearchIndex, searchQuery } = req.body;
+    const { name, description, percentage, status, amazonSearchIndex, searchQuery, searchQueries, selectedProducts } = req.body;
 
     // Validate required fields
     if (!name) {
@@ -91,7 +91,8 @@ exports.createCategory = asyncHandler(async (req, res) => {
         percentage: percentageNum,
         status: status || 'active',
         amazonSearchIndex: amazonSearchIndex || 'All',
-        searchQuery: searchQuery?.trim() || '',
+        searchQueries: searchQueries || (searchQuery ? [searchQuery.trim()] : []),
+        selectedProducts: selectedProducts || [],
     });
 
     return sendSuccess(res, category, 'Category created successfully', 201);
@@ -101,7 +102,7 @@ exports.createCategory = asyncHandler(async (req, res) => {
 // @route   PUT /api/admin/categories/:id
 // @access  Private/Admin
 exports.updateCategory = asyncHandler(async (req, res) => {
-    const { name, description, percentage, status, amazonSearchIndex, searchQuery } = req.body;
+    const { name, description, percentage, status, amazonSearchIndex, searchQuery, searchQueries, selectedProducts } = req.body;
 
     const category = await Category.findById(req.params.id);
 
@@ -147,8 +148,14 @@ exports.updateCategory = asyncHandler(async (req, res) => {
         category.amazonSearchIndex = amazonSearchIndex;
     }
 
-    if (searchQuery !== undefined) {
-        category.searchQuery = searchQuery?.trim() || '';
+    if (searchQueries !== undefined) {
+        category.searchQueries = searchQueries;
+    } else if (searchQuery !== undefined) {
+        category.searchQueries = [searchQuery.trim()];
+    }
+
+    if (selectedProducts !== undefined) {
+        category.selectedProducts = selectedProducts;
     }
 
     await category.save();

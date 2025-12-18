@@ -11,6 +11,7 @@ const {
   validateSearchResponse,
   validateGetItemsResponse,
 } = require('../utils/awsApiValidator');
+const ProductClick = require('../models/ProductClick');
 
 // @desc    Search products from Amazon
 // @route   GET /api/products
@@ -432,4 +433,83 @@ exports.getProductsByCategory = asyncHandler(async (req, res) => {
     data: result.data,
     validated: true,
   });
+});
+// @desc    Get multiple products by ASINs
+// @route   POST /api/products/items
+// @access  Public
+exports.getProductsByAsins = asyncHandler(async (req, res) => {
+  // Validate AWS credentials first
+  const credentialsCheck = validateAWSCredentials();
+  if (!credentialsCheck.valid) {
+    return sendError(
+      res,
+      `AWS API credentials not configured. Missing: ${credentialsCheck.missing.join(', ')}`,
+      500
+    );
+  }
+
+  const { itemIds } = req.body;
+
+  if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
+    return sendValidationError(res, 'itemIds (array of ASINs) is required');
+  }
+
+  // Validate ASIN formats
+  const invalidAsins = itemIds.filter((asin) => !/^[A-Z0-9]{10}$/i.test(asin));
+  if (invalidAsins.length > 0) {
+    return sendValidationError(
+      res,
+      `Invalid ASIN format(s): ${invalidAsins.join(', ')}. ASIN must be 10 alphanumeric characters`
+    );
+  }
+
+  const result = await amazonApiService.getItems(itemIds);
+
+  // Validate API result
+  const apiValidation = validateAPIResult(result);
+  if (!apiValidation.valid) {
+    return sendError(
+      res,
+      apiValidation.error,
+      apiValidation.errorDetails?.statusCode || 400,
+      apiValidation.errorDetails || null
+    );
+  }
+
+  return sendSuccess(res, { ...result.data, validated: true }, 'Items retrieved successfully');
+});
+
+// @desc    Get personalized products based on user click history
+// @route   GET /api/products/personalized
+// @access  Private
+exports.getPersonalizedProducts = asyncHandler(async (req, res) => {
+  const userId = req.user?._id;
+
+  if (!userId) {
+    return sendUnauthorized(res, 'User identity not found');
+  }
+
+  // 1. Get recent clicks for this user
+  const recentClicks = await ProductClick.find({ user: userId })
+    .sort({ createdAt: -1 })
+    .limit(5);
+
+  let keywords = 'Recommended';
+  let searchIndex = 'All';
+
+  // 2. Determine search criteria from history
+  if (recentClicks.length > 0) {
+    // Pick the most common category or most recent product name
+    const categories = recentClicks.map(c => c.category);
+    searchIndex = categories[0] || 'All';
+    keywords = recentClicks[0].productName.split(' ').slice(0, 3).join(' ') || 'Recommended';
+  }
+
+  // 3. Fetch from Amazon
+  const result = await amazonApiService.searchItems(keywords, {
+    searchIndex,
+    itemCount: 10,
+  });
+
+  return sendSuccess(res, result.data, 'Personalized products retrieved successfully');
 });

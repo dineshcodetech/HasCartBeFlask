@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const ProductClick = require('../models/ProductClick');
 const asyncHandler = require('../utils/asyncHandler');
 const {
   sendSuccess,
@@ -20,6 +21,7 @@ exports.getMyReferrals = asyncHandler(async (req, res) => {
 exports.getReferralStats = asyncHandler(async (req, res) => {
   const agentId = req.user.id;
   const totalReferrals = await User.countDocuments({ referredBy: agentId });
+  const totalClicks = await ProductClick.countDocuments({ agent: agentId });
   const agent = await User.findById(agentId).select('referralCode name email');
 
   return sendSuccess(res, {
@@ -30,6 +32,7 @@ exports.getReferralStats = asyncHandler(async (req, res) => {
       referralCode: agent.referralCode,
     },
     totalReferrals,
+    totalClicks,
   }, 'Referral statistics retrieved successfully');
 });
 

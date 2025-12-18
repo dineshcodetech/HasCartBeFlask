@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { trackProductClick } = require('../controllers/analyticsController');
-const { protect } = require('../middleware/auth');
+const { trackProductClick, getMyProductClicks } = require('../controllers/analyticsController');
+const { protect, optionalProtect } = require('../middleware/auth');
 
-// All routes require authentication
-router.use(protect);
+// Track click is optional protect (supports guest tracking)
+router.post('/track-click', optionalProtect, trackProductClick);
 
-router.post('/track-click', trackProductClick);
+// My clicks requires protection
+router.get('/my-clicks', protect, getMyProductClicks);
 
 module.exports = router;
