@@ -28,18 +28,16 @@ jobs:
             
             # Pull latest code
             git pull origin main
+            echo "This is the log 31"
             
             # Stop existing containers
             sudo docker-compose down
+            echo "This is the log 34"
             
             # Build and start new containers
             sudo docker-compose build --no-cache
+            echo "This is the log 39"
             sudo docker-compose up -d
-            
-            # Clean up old images
-            sudo docker image prune -f
-            
-            # Show running containers
-            sudo docker-compose ps
+            echo "Deployment completed successfully"
           EOF
 
