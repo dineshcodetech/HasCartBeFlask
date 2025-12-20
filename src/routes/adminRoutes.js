@@ -6,6 +6,7 @@ const {
     adminLogin,
     getReferralAnalytics,
     getAllTransactions,
+    createTransactionForClick,
     updateTransactionStatus,
     getAllWithdrawals,
     updateWithdrawalStatus,
@@ -29,6 +30,7 @@ router.get('/users', getAllUsers);
 router.get('/analytics/clicks', getProductClicks);
 router.get('/referral-stats', getReferralAnalytics);
 router.get('/transactions', getAllTransactions);
+router.post('/transactions/create-for-click', createTransactionForClick);
 router.put('/transactions/:id', updateTransactionStatus);
 router.get('/withdrawals', getAllWithdrawals);
 router.put('/withdrawals/:id', updateWithdrawalStatus);

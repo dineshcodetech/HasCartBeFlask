@@ -277,6 +277,85 @@ exports.getAllTransactions = asyncHandler(async (req, res) => {
   }, 'Transactions retrieved successfully');
 });
 
+// @desc    Create transaction for product click (Admin only)
+// @route   POST /api/admin/transactions/create-for-click
+// @access  Private/Admin
+exports.createTransactionForClick = asyncHandler(async (req, res) => {
+  const { productClickId, amount, status = 'pending' } = req.body;
+
+  if (!productClickId) {
+    return sendValidationError(res, 'Product click ID is required');
+  }
+
+  const productClick = await ProductClick.findById(productClickId).populate('agent');
+  
+  if (!productClick) {
+    return sendError(res, 'Product click not found', 404);
+  }
+
+  if (!productClick.agent) {
+    return sendValidationError(res, 'Product click has no associated agent');
+  }
+
+  // Check if transaction already exists
+  const existingTransaction = await Transaction.findOne({
+    referenceId: productClickId,
+    referenceModel: 'ProductClick'
+  });
+
+  if (existingTransaction) {
+    return sendValidationError(res, 'Transaction already exists for this product click');
+  }
+
+  // Calculate commission amount if not provided
+  let commissionAmount = amount;
+  if (!commissionAmount || commissionAmount <= 0) {
+    // Use default 2% or category percentage
+    let commissionPercentage = 0.02; // Default 2%
+    
+    if (productClick.category && productClick.category !== 'Uncategorized') {
+      const categoryData = await Category.findOne({
+        $or: [
+          { name: productClick.category },
+          { amazonSearchIndex: productClick.category }
+        ]
+      });
+      if (categoryData && categoryData.percentage > 0) {
+        commissionPercentage = categoryData.percentage / 100;
+      }
+    }
+    
+    commissionAmount = (productClick.price || 0) * commissionPercentage;
+  }
+
+  if (commissionAmount <= 0) {
+    return sendValidationError(res, 'Commission amount must be greater than 0');
+  }
+
+  // Create transaction
+  const transaction = await Transaction.create({
+    user: productClick.agent._id,
+    type: 'earnings',
+    amount: commissionAmount,
+    status: status,
+    description: `Admin Created Commission: ${productClick.productName}`,
+    referenceId: productClick._id,
+    referenceModel: 'ProductClick'
+  });
+
+  // If status is completed, add to user balance
+  if (status === 'completed') {
+    await User.findByIdAndUpdate(productClick.agent._id, {
+      $inc: {
+        balance: commissionAmount,
+        totalEarnings: commissionAmount
+      }
+    });
+  }
+
+  return sendSuccess(res, transaction, 'Transaction created successfully', 201);
+});
+
 // @desc    Update transaction status (Admin only)
 // @route   PUT /api/admin/transactions/:id
 // @access  Private/Admin
