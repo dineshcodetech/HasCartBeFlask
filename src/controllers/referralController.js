@@ -22,13 +22,14 @@ exports.getReferralStats = asyncHandler(async (req, res) => {
   const agentId = req.user.id;
   const totalReferrals = await User.countDocuments({ referredBy: agentId });
   const totalClicks = await ProductClick.countDocuments({ agent: agentId });
-  const agent = await User.findById(agentId).select('referralCode name email');
+  const agent = await User.findById(agentId).select('referralCode name email balance');
 
   return sendSuccess(res, {
     agent: {
       id: agent._id,
       name: agent.name,
       email: agent.email,
+      balance: agent.balance || 0,
       referralCode: agent.referralCode,
     },
     totalReferrals,
@@ -69,7 +70,7 @@ exports.validateReferralCode = asyncHandler(async (req, res) => {
     referralCode: sanitizedCode,
     role: { $in: ['agent', 'admin'] }
   });
-  
+
 
   if (agent) {
     console.log(`[Referral] Code valid. Agent: ${agent.name}`);

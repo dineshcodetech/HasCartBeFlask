@@ -78,8 +78,46 @@ exports.adminLogin = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/users
 // @access  Private/Admin
 exports.getAllUsers = asyncHandler(async (req, res) => {
-  const users = await User.find().select('-password');
-  return sendSuccess(res, users, 'Users retrieved successfully');
+  const { role, startDate, endDate, page = 1, limit = 50 } = req.query;
+  const query = {};
+
+  if (role) query.role = role;
+
+  if (startDate || endDate) {
+    query.createdAt = {};
+    if (startDate) query.createdAt.$gte = new Date(startDate);
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      query.createdAt.$lte = end;
+    }
+  }
+
+  const pageNum = parseInt(page, 10) || 1;
+  const limitNum = parseInt(limit, 10) || 50;
+  const skip = (pageNum - 1) * limitNum;
+
+  const total = await User.countDocuments(query);
+  const users = await User.find(query).select('-password').sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean();
+
+  // For each agent, count their referred users
+  const usersWithReferralCount = await Promise.all(users.map(async (user) => {
+    if (user.role === 'agent' || user.role === 'admin') {
+      const count = await User.countDocuments({ referredBy: user._id });
+      return { ...user, referredUserCount: count };
+    }
+    return { ...user, referredUserCount: 0 };
+  }));
+
+  return sendSuccess(res, {
+    users: usersWithReferralCount,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum)
+    }
+  }, 'Users retrieved successfully');
 });
 
 // @desc    Get dashboard stats (Admin only)
@@ -201,32 +239,119 @@ exports.getReferralAnalytics = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/transactions
 // @access  Private/Admin
 exports.getAllTransactions = asyncHandler(async (req, res) => {
-  const { userId, type, status } = req.query;
+  const { userId, type, status, startDate, endDate, page = 1, limit = 20 } = req.query;
   const query = {};
   if (userId) query.user = userId;
   if (type) query.type = type;
   if (status) query.status = status;
 
+  if (startDate || endDate) {
+    query.createdAt = {};
+    if (startDate) query.createdAt.$gte = new Date(startDate);
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      query.createdAt.$lte = end;
+    }
+  }
+
+  const pageNum = parseInt(page, 10) || 1;
+  const limitNum = parseInt(limit, 10) || 20;
+  const skip = (pageNum - 1) * limitNum;
+
+  const total = await Transaction.countDocuments(query);
   const transactions = await Transaction.find(query)
     .populate('user', 'name email referralCode')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limitNum);
 
-  return sendSuccess(res, transactions, 'Transactions retrieved successfully');
+  return sendSuccess(res, {
+    transactions,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum)
+    }
+  }, 'Transactions retrieved successfully');
+});
+
+// @desc    Update transaction status (Admin only)
+// @route   PUT /api/admin/transactions/:id
+// @access  Private/Admin
+exports.updateTransactionStatus = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+  const transaction = await Transaction.findById(req.params.id);
+
+  if (!transaction) {
+    return sendError(res, 'Transaction not found', 404);
+  }
+
+  if (transaction.status !== 'pending') {
+    return sendValidationError(res, 'Transaction is already processed');
+  }
+
+  if (status === 'completed') {
+    // If it's earnings, add to user balance
+    if (transaction.type === 'earnings') {
+      await User.findByIdAndUpdate(transaction.user, {
+        $inc: {
+          balance: transaction.amount,
+          totalEarnings: transaction.amount
+        }
+      });
+    }
+    transaction.status = 'completed';
+  } else if (status === 'failed') {
+    transaction.status = 'failed';
+  } else {
+    return sendValidationError(res, 'Invalid status update');
+  }
+
+  await transaction.save();
+
+  return sendSuccess(res, transaction, 'Transaction updated successfully');
 });
 
 // @desc    Get all withdrawal requests (Admin only)
 // @route   GET /api/admin/withdrawals
 // @access  Private/Admin
 exports.getAllWithdrawals = asyncHandler(async (req, res) => {
-  const { status } = req.query;
+  const { status, startDate, endDate, page = 1, limit = 20 } = req.query;
   const query = {};
   if (status) query.status = status;
 
+  if (startDate || endDate) {
+    query.createdAt = {};
+    if (startDate) query.createdAt.$gte = new Date(startDate);
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      query.createdAt.$lte = end;
+    }
+  }
+
+  const pageNum = parseInt(page, 10) || 1;
+  const limitNum = parseInt(limit, 10) || 20;
+  const skip = (pageNum - 1) * limitNum;
+
+  const total = await Withdrawal.countDocuments(query);
   const withdrawals = await Withdrawal.find(query)
     .populate('user', 'name email mobile balance')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limitNum);
 
-  return sendSuccess(res, withdrawals, 'Withdrawal requests retrieved successfully');
+  return sendSuccess(res, {
+    withdrawals,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum)
+    }
+  }, 'Withdrawal requests retrieved successfully');
 });
 
 // @desc    Update withdrawal status (Admin only)
@@ -278,36 +403,37 @@ exports.updateWithdrawalStatus = asyncHandler(async (req, res) => {
   return sendSuccess(res, withdrawal, 'Withdrawal status updated successfully');
 });
 
-// @desc    Get Agent Referral Tree (Admin only)
-// @route   GET /api/admin/referral-tree
-// @access  Private/Admin
-exports.getReferralTree = asyncHandler(async (req, res) => {
-  const agents = await User.find({ role: 'agent' }).select('name email referralCode referredBy');
-
-  // Build tree structure
-  const agentMap = {};
-  agents.forEach(agent => {
-    agentMap[agent._id] = { ...agent.toObject(), children: [] };
-  });
-
-  const tree = [];
-  agents.forEach(agent => {
-    if (agent.referredBy && agentMap[agent.referredBy]) {
-      agentMap[agent.referredBy].children.push(agentMap[agent._id]);
-    } else {
-      tree.push(agentMap[agent._id]);
-    }
-  });
-
-  return sendSuccess(res, tree, 'Referral tree retrieved successfully');
-});
-
 // @desc    Get Agent-wise Click & Earnings Report (Admin only)
 // @route   GET /api/admin/reports/agent-clicks
 // @access  Private/Admin
 exports.getAgentClickReport = asyncHandler(async (req, res) => {
+  const { startDate, endDate, page = 1, limit = 20 } = req.query;
+  const matchQuery = { agent: { $ne: null } };
+
+  if (startDate || endDate) {
+    matchQuery.createdAt = {};
+    if (startDate) matchQuery.createdAt.$gte = new Date(startDate);
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      matchQuery.createdAt.$lte = end;
+    }
+  }
+
+  const pageNum = parseInt(page, 10) || 1;
+  const limitNum = parseInt(limit, 10) || 20;
+  const skip = (pageNum - 1) * limitNum;
+
+  // Get total count for pagination
+  const countResult = await ProductClick.aggregate([
+    { $match: matchQuery },
+    { $group: { _id: '$agent' } },
+    { $count: 'total' }
+  ]);
+  const total = countResult.length > 0 ? countResult[0].total : 0;
+
   const report = await ProductClick.aggregate([
-    { $match: { agent: { $ne: null } } },
+    { $match: matchQuery },
     {
       $group: {
         _id: '$agent',
@@ -326,19 +452,58 @@ exports.getAgentClickReport = asyncHandler(async (req, res) => {
     },
     { $unwind: '$agentDetails' },
     {
+      $lookup: {
+        from: 'transactions',
+        let: { agentId: '$_id' },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ['$user', '$$agentId'] },
+                  { $eq: ['$type', 'earnings'] },
+                  { $eq: ['$status', 'completed'] }
+                ]
+              }
+            }
+          },
+          { $project: { amount: 1 } }
+        ],
+        as: 'earnings'
+      }
+    },
+    {
       $project: {
         agentName: '$agentDetails.name',
         agentEmail: '$agentDetails.email',
         referralCode: '$agentDetails.referralCode',
         totalClicks: 1,
         totalSalesVolume: 1,
-        estimatedEarnings: { $multiply: ['$totalSalesVolume', 0.02] },
+        estimatedEarnings: { $ifNull: [{ $sum: '$earnings.amount' }, 0] },
         productCount: { $size: '$products' }
       }
     },
-    { $sort: { totalClicks: -1 } }
+    { $sort: { totalClicks: -1 } },
+    { $skip: skip },
+    { $limit: limitNum }
   ]);
 
-  return sendSuccess(res, report, 'Agent click report retrieved successfully');
+  return sendSuccess(res, {
+    report,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum)
+    }
+  }, 'Agent click report retrieved successfully');
+});
+
+// @desc    Get referrals for a specific agent (Admin only)
+// @route   GET /api/admin/agents/:id/referrals
+// @access  Private/Admin
+exports.getAgentReferrals = asyncHandler(async (req, res) => {
+  const referrals = await User.find({ referredBy: req.params.id }).select('-password');
+  return sendSuccess(res, referrals, 'Agent referrals retrieved successfully');
 });
 

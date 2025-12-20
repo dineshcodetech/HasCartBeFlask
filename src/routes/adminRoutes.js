@@ -6,10 +6,12 @@ const {
     adminLogin,
     getReferralAnalytics,
     getAllTransactions,
+    updateTransactionStatus,
     getAllWithdrawals,
     updateWithdrawalStatus,
     getReferralTree,
-    getAgentClickReport
+    getAgentClickReport,
+    getAgentReferrals
 } = require('../controllers/adminController');
 const { getProductClicks } = require('../controllers/analyticsController');
 const { protect, authorize } = require('../middleware/auth');
@@ -27,10 +29,11 @@ router.get('/users', getAllUsers);
 router.get('/analytics/clicks', getProductClicks);
 router.get('/referral-stats', getReferralAnalytics);
 router.get('/transactions', getAllTransactions);
+router.put('/transactions/:id', updateTransactionStatus);
 router.get('/withdrawals', getAllWithdrawals);
 router.put('/withdrawals/:id', updateWithdrawalStatus);
-router.get('/referral-tree', getReferralTree);
 router.get('/reports/agent-clicks', getAgentClickReport);
+router.get('/agents/:id/referrals', getAgentReferrals);
 
 // Product management routes
 router.use('/products', adminProductRoutes);
