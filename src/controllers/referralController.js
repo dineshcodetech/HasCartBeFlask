@@ -52,3 +52,37 @@ exports.getMyReferralCode = asyncHandler(async (req, res) => {
   }, 'Referral code retrieved successfully');
 });
 
+// @desc    Validate a referral code
+// @route   GET /api/referral/validate/:code
+// @access  Public
+exports.validateReferralCode = asyncHandler(async (req, res) => {
+  const { code } = req.params;
+
+  if (!code) {
+    return sendSuccess(res, { valid: false, message: 'Code is required' });
+  }
+
+  const sanitizedCode = code.trim().toUpperCase();
+  console.log(`[Referral] Validating code: "${sanitizedCode}"`);
+
+  const agent = await User.findOne({
+    referralCode: sanitizedCode,
+    role: { $in: ['agent', 'admin'] }
+  });
+  
+
+  if (agent) {
+    console.log(`[Referral] Code valid. Agent: ${agent.name}`);
+    return sendSuccess(res, {
+      valid: true,
+      agentName: agent.name
+    }, 'Referral code is valid');
+  } else {
+    console.log(`[Referral] Code invalid: "${sanitizedCode}"`);
+    return sendSuccess(res, {
+      valid: false,
+      message: 'Invalid referral code'
+    }, 'Invalid referral code');
+  }
+});
+

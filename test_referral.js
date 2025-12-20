@@ -1,0 +1,1 @@
+const mongoose = require("mongoose"); const User = require("./src/models/User"); mongoose.connect("mongodb://localhost:27017/hascart").then(async () => { const agents = await User.find({ referralCode: { $exists: true } }).select("name referralCode role"); console.log(JSON.stringify(agents)); mongoose.connection.close(); });

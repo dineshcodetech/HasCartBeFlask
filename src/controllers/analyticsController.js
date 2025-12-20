@@ -1,5 +1,6 @@
 const ProductClick = require('../models/ProductClick');
 const User = require('../models/User');
+const Transaction = require('../models/Transaction');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess, sendError, sendValidationError } = require('../utils/responseHandler');
 
@@ -40,6 +41,31 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
         productUrl,
         agent: agentId,
     });
+
+    // Auto-commission calculation (2% of price)
+    if (agentId && price > 0) {
+        const commissionAmount = price * 0.02;
+        if (commissionAmount > 0) {
+            // Update agent balance
+            await User.findByIdAndUpdate(agentId, {
+                $inc: {
+                    balance: commissionAmount,
+                    totalEarnings: commissionAmount
+                }
+            });
+
+            // Create transaction record
+            await Transaction.create({
+                user: agentId,
+                type: 'earnings',
+                amount: commissionAmount,
+                status: 'completed',
+                description: `Commission for product click: ${productName}`,
+                referenceId: productClick._id,
+                referenceModel: 'ProductClick'
+            });
+        }
+    }
 
     return sendSuccess(res, productClick, 'Click tracked successfully', 201);
 });
