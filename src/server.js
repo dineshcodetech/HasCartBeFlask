@@ -13,6 +13,7 @@ const amazonRoutes = require('./routes/amazonRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const bannerRoutes = require('./routes/bannerRoutes');
+const withdrawalRoutes = require('./routes/withdrawalRoutes');
 
 // Connect to database
 connectDB();
@@ -44,6 +45,7 @@ app.get('/', (req, res) => {
       admin: '/api/admin',
       categories: '/api/admin/categories',
       analytics: '/api/analytics',
+      withdrawals: '/api/withdrawals',
     },
   });
 });
@@ -57,6 +59,8 @@ app.use('/api/referral', referralRoutes);
 app.use('/api/amazon', amazonRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/banners', bannerRoutes);
+app.use('/api/withdrawals', withdrawalRoutes);
+console.log('✓ Withdrawal routes registered at /api/withdrawals');
 
 const { sendNotFound, sendError, sendValidationError } = require('./utils/responseHandler');
 
@@ -96,4 +100,8 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log('Available routes:');
+  console.log('  POST /api/withdrawals - Create withdrawal request');
+  console.log('  GET /api/withdrawals - Get user withdrawals');
+  console.log('  GET /api/withdrawals/:id - Get withdrawal by ID');
 });
