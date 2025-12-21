@@ -5,8 +5,18 @@ const { sendSuccess, sendValidationError, sendNotFound } = require('../utils/res
 // @desc    Get all active banners
 // @route   GET /api/banners
 // @access  Public
+// @desc    Get banners
+// @route   GET /api/banners
+// @access  Public
 exports.getBanners = asyncHandler(async (req, res) => {
-    const banners = await Banner.find({ isActive: true }).sort({ order: 1, createdAt: -1 });
+    const filter = {};
+
+    // Only show active banners to public unless 'all' is specified
+    if (req.query.all !== 'true') {
+        filter.isActive = true;
+    }
+
+    const banners = await Banner.find(filter).sort({ order: 1, createdAt: -1 });
     return sendSuccess(res, banners, 'Banners retrieved successfully');
 });
 
