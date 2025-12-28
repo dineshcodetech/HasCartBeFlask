@@ -9,14 +9,31 @@ const { sendSuccess, sendError, sendValidationError } = require('../utils/respon
 // @route   POST /api/analytics/track-click
 // @access  Public/Private
 exports.trackProductClick = asyncHandler(async (req, res) => {
-    const { asin, productName, category, price, imageUrl, productUrl, referralCode, agentId: providedAgentId } = req.body;
+    let { asin, productName, category, price, imageUrl, productUrl, referralCode, agentId: providedAgentId } = req.body;
     const userId = req.user ? req.user.id : null; // User may or may not be logged in
+
+    // Sanitize price if it's a string (remove currency symbols like $, ₹, commas)
+    if (typeof price === 'string') {
+        const cleanPrice = price.replace(/[^0-9.]/g, '');
+        price = parseFloat(cleanPrice) || 0;
+    } else if (typeof price === 'number') {
+        // already a number
+    } else {
+        price = 0;
+    }
 
     if (!asin || !productName) {
         return sendValidationError(res, 'ASIN and Product Name are required');
     }
 
     let agentId = providedAgentId || null;
+
+    // Priority 0: Self-attribution if the user is an agent/admin
+    // If the logged-in user is an agent, they get the attribution regardless of other factors
+    if (req.user && (req.user.role === 'agent' || req.user.role === 'admin')) {
+        agentId = req.user._id;
+        console.log(`[Affiliate] Self-attributing click to agent/admin: ${agentId}`);
+    }
 
     // First priority: Referral code from the share link (if agentId not already provided)
     // IMPORTANT: This works even for guest/unknown users
@@ -37,34 +54,119 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
         }
     }
 
+    // Determine commission percentage based on category
+    let commissionPercentage = 0.02; // Default 2%
+    let finalCategory = category;
+
+    // 1. Try to match by explicit category if provided and valid
+    if (finalCategory && finalCategory !== 'Uncategorized' && finalCategory !== 'Unknown') {
+        const escapedCategory = finalCategory.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const searchRegex = new RegExp(`^${escapedCategory}$`, 'i');
+
+        const categoryData = await Category.findOne({
+            $or: [
+                { name: { $regex: searchRegex } },
+                { amazonSearchIndex: finalCategory },
+                { searchQueries: { $elemMatch: { $regex: searchRegex } } }
+            ]
+        });
+
+        if (categoryData) {
+            if (categoryData.percentage > 0) {
+                commissionPercentage = categoryData.percentage / 100;
+            }
+            // Normalize category name to the official one for consistency
+            finalCategory = categoryData.name;
+            console.log(`[Affiliate] Matched explicit category: ${finalCategory} (${categoryData.percentage}%)`);
+        }
+    }
+
+    // 2. Fallback: Auto-detect from Product Name if category is missing/unknown/not matched yet
+    // OR if we are still at default percentage (meaning explicit match failed to find a high-value category)
+    if ((!finalCategory || finalCategory === 'Uncategorized' || finalCategory === 'Unknown') || commissionPercentage === 0.02) {
+        console.log(`[Affiliate] Attempting auto-detection for '${productName}' (Input Category: ${category})`);
+
+        // Fetch all potential categories to match against product name
+        const categories = await Category.find({ status: 'active' });
+
+        // A weak helper map for common uncategorized terms -> Likely Category Name partial
+        const SMART_MAP = {
+            'fresh': 'Grocery',
+            'vegetable': 'Grocery',
+            'fruit': 'Grocery',
+            'food': 'Grocery',
+            'snack': 'Grocery',
+            'chocolate': 'Grocery',
+            'shirt': 'Fashion',
+            'pant': 'Fashion',
+            'shoe': 'Shoes',
+            'soap': 'Beauty',
+            'shampoo': 'Beauty'
+        };
+
+        // Check Smart Map first
+        for (const [term, targetCatPartial] of Object.entries(SMART_MAP)) {
+            if (productName.toLowerCase().includes(term)) {
+                // Find the actual category object that matches our target partial
+                const smartMatch = categories.find(c => c.name.includes(targetCatPartial) || c.amazonSearchIndex.includes(targetCatPartial));
+                if (smartMatch) {
+                    if (smartMatch.percentage > 0) {
+                        commissionPercentage = smartMatch.percentage / 100;
+                    }
+                    finalCategory = smartMatch.name;
+                    console.log(`[Affiliate] Smart-detected category via term '${term}': ${finalCategory} (${smartMatch.percentage}%)`);
+                    break;
+                }
+            }
+        }
+
+        // specific keywords to match first (priority) - ONLY if smart match didn't find anything
+        if (finalCategory === 'Uncategorized' || finalCategory === 'Unknown') {
+            for (const cat of categories) {
+                let matched = false;
+
+                // Check if product name contains the category name (e.g. "Automotive" in "Automotive Parts")
+                // or if any search query keyword exists in product name
+                const keywords = [cat.name, ...(cat.searchQueries || [])];
+
+                for (const keyword of keywords) {
+                    if (!keyword) continue;
+                    // strict word boundary check might be too strict for partials, let's use simple inclusion (case-insensitive)
+                    // but careful about short words.
+                    // switch to safe string inclusion (case-insensitive) to avoid regex errors with special chars
+                    if (keyword.length > 2 && productName.toLowerCase().includes(keyword.toLowerCase())) {
+                        matched = true;
+                        // console.log(`Matched keyword: ${keyword}`);
+                        break;
+                    }
+                }
+
+                if (matched) {
+                    if (cat.percentage > 0) {
+                        commissionPercentage = cat.percentage / 100;
+                    }
+                    finalCategory = cat.name;
+                    console.log(`[Affiliate] Auto-detected category: ${finalCategory} (${cat.percentage}%)`);
+                    break; // Use the first strong match
+                }
+            }
+        }
+    }
+
     const productClick = await ProductClick.create({
         user: userId || null, // Allow null for guest users
         asin,
         productName,
-        category: category || 'Uncategorized',
+        category: finalCategory || 'Uncategorized',
         price: price || 0,
         imageUrl,
         productUrl,
         agent: agentId,
+        commissionRate: commissionPercentage,
     });
 
     // Create pending commission transaction (requires admin approval)
     if (agentId && price > 0) {
-        // Determine commission percentage based on category
-        let commissionPercentage = 0.02; // Default 2%
-        if (category && category !== 'Uncategorized') {
-            const categoryData = await Category.findOne({
-                $or: [
-                    { name: category },
-                    { amazonSearchIndex: category }
-                ]
-            });
-            if (categoryData && categoryData.percentage > 0) {
-                commissionPercentage = categoryData.percentage / 100;
-                console.log(`[Affiliate] Using category percentage: ${categoryData.percentage}% for ${category}`);
-            }
-        }
-
         const commissionAmount = price * commissionPercentage;
         if (commissionAmount > 0) {
             // Create transaction record in PENDING state
@@ -159,6 +261,70 @@ exports.getProductClicks = asyncHandler(async (req, res) => {
             totalPages: Math.ceil(total / limitNum),
         },
     }, 'Click data retrieved successfully');
+});
+
+// @desc    Update product click commission rate (Admin)
+// @route   PUT /api/admin/analytics/clicks/:id
+// @access  Private/Admin
+exports.updateClickCommission = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    let { commissionRate } = req.body; // Expects percentage like 0.05 or 5
+
+    // Normalize rate: if input is like 5, treat as 5% (0.05). If < 1, treat as decimal.
+    // If user explicitly sends 5 (for 5%), we convert.
+    // Standardizing on decimal: e.g. 0.05
+    if (commissionRate > 1) {
+        commissionRate = commissionRate / 100;
+    }
+
+    const click = await ProductClick.findById(id);
+    if (!click) {
+        return sendError(res, 'Product click not found', 404);
+    }
+
+    // Update click record (versioning logic can be separate or simple boolean 'isOverridden')
+    const oldRate = click.commissionRate;
+    click.commissionRate = commissionRate;
+    await click.save();
+
+    console.log(`[Admin] Updated rate for click ${id}: ${oldRate} -> ${commissionRate}`);
+
+    // Update associated Transaction if exists
+    // OR create one if it didn't exist (e.g. was 0 rate before)
+    const transaction = await Transaction.findOne({
+        referenceId: click._id,
+        referenceModel: 'ProductClick'
+    });
+
+    const newAmount = click.price * commissionRate;
+
+    if (transaction) {
+        if (newAmount > 0) {
+            transaction.amount = newAmount;
+            // Optionally update description to reflect new rate
+            // But let's keep it simple or append 'Updated'
+            transaction.description = `Commission (${(commissionRate * 100).toFixed(1)}%): ${click.productName} [Updated]`;
+            await transaction.save();
+        } else {
+            // New amount is 0, maybe delete transaction? Or set to 0?
+            transaction.amount = 0;
+            transaction.status = 'failed'; // effectively cancelled
+            await transaction.save();
+        }
+    } else if (newAmount > 0 && click.agent) {
+        // Create new if missing and we have an agent + valid amount
+        await Transaction.create({
+            user: click.agent,
+            type: 'earnings',
+            amount: newAmount,
+            status: 'pending',
+            description: `Commission (${(commissionRate * 100).toFixed(1)}%): ${click.productName} [Manual Update]`,
+            referenceId: click._id,
+            referenceModel: 'ProductClick'
+        });
+    }
+
+    return sendSuccess(res, { click, newAmount }, 'Commission rate updated successfully');
 });
 
 // @desc    Get current user's product clicks (Personalized history)

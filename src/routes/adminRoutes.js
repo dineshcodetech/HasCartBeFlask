@@ -12,7 +12,8 @@ const {
     updateWithdrawalStatus,
     getReferralTree,
     getAgentClickReport,
-    getAgentReferrals
+    getAgentReferrals,
+    toggleUserStatus
 } = require('../controllers/adminController');
 const { getProductClicks } = require('../controllers/analyticsController');
 const { protect, authorize } = require('../middleware/auth');
@@ -27,11 +28,13 @@ router.use(authorize('admin'));
 
 router.get('/dashboard', getDashboard);
 router.get('/users', getAllUsers);
+router.put('/users/:id/status', toggleUserStatus);
 router.get('/analytics/clicks', getProductClicks);
 router.get('/referral-stats', getReferralAnalytics);
 router.get('/transactions', getAllTransactions);
 router.post('/transactions/create-for-click', createTransactionForClick);
 router.put('/transactions/:id', updateTransactionStatus);
+router.put('/analytics/clicks/:id', require('../controllers/analyticsController').updateClickCommission);
 router.get('/withdrawals', getAllWithdrawals);
 router.put('/withdrawals/:id', updateWithdrawalStatus);
 router.get('/reports/agent-clicks', getAgentClickReport);

@@ -40,6 +40,10 @@ const productClickSchema = new mongoose.Schema(
             ref: 'User',
             default: null, // Populated from user.referredBy at creation time
         },
+        commissionRate: {
+            type: Number,
+            default: 0, // Percentage used for calculation (e.g. 0.05 for 5%)
+        },
     },
     {
         timestamps: true,

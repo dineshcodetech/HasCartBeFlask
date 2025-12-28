@@ -31,6 +31,11 @@ exports.login = asyncHandler(async (req, res) => {
     return sendUnauthorized(res, 'Invalid credentials');
   }
 
+  // Check if account is deactivated
+  if (user.isDeactivated) {
+    return sendUnauthorized(res, 'Your account has been deactivated. Please contact support.');
+  }
+
   // Check if password matches
   const isMatch = await user.matchPassword(password);
 

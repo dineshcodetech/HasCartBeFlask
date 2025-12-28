@@ -32,6 +32,10 @@ const userSchema = new mongoose.Schema(
       enum: ['user', 'admin', 'agent'],
       default: 'user',
     },
+    isDeactivated: {
+      type: Boolean,
+      default: false,
+    },
     referralCode: {
       type: String,
       unique: true,

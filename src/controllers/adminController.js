@@ -74,6 +74,31 @@ exports.adminLogin = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Toggle user active status (Admin only)
+// @route   PUT /api/admin/users/:id/status
+// @access  Private/Admin
+exports.toggleUserStatus = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id);
+
+  if (!user) {
+    return sendError(res, 'User not found', 404);
+  }
+
+  // Prevent admin from deactivating themselves
+  if (user._id.toString() === req.user.id.toString()) {
+    return sendValidationError(res, 'You cannot deactivate your own account');
+  }
+
+  user.isDeactivated = !user.isDeactivated;
+  await user.save();
+
+  return sendSuccess(res, {
+    id: user._id,
+    name: user.name,
+    isDeactivated: user.isDeactivated
+  }, `User ${user.isDeactivated ? 'deactivated' : 'activated'} successfully`);
+});
+
 // @desc    Get all users (Admin only)
 // @route   GET /api/admin/users
 // @access  Private/Admin
@@ -288,7 +313,7 @@ exports.createTransactionForClick = asyncHandler(async (req, res) => {
   }
 
   const productClick = await ProductClick.findById(productClickId).populate('agent');
-  
+
   if (!productClick) {
     return sendError(res, 'Product click not found', 404);
   }
@@ -312,7 +337,7 @@ exports.createTransactionForClick = asyncHandler(async (req, res) => {
   if (!commissionAmount || commissionAmount <= 0) {
     // Use default 2% or category percentage
     let commissionPercentage = 0.02; // Default 2%
-    
+
     if (productClick.category && productClick.category !== 'Uncategorized') {
       const categoryData = await Category.findOne({
         $or: [
@@ -324,7 +349,7 @@ exports.createTransactionForClick = asyncHandler(async (req, res) => {
         commissionPercentage = categoryData.percentage / 100;
       }
     }
-    
+
     commissionAmount = (productClick.price || 0) * commissionPercentage;
   }
 
