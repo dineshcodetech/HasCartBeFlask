@@ -12,6 +12,7 @@ const {
   validateGetItemsResponse,
 } = require('../utils/awsApiValidator');
 const ProductClick = require('../models/ProductClick');
+const Product = require('../models/Product');
 
 // @desc    Search products from Amazon
 // @route   GET /api/products
@@ -217,6 +218,65 @@ exports.getProduct = asyncHandler(async (req, res) => {
     { ...responseValidation.item, validated: true },
     'Product retrieved successfully'
   );
+});
+
+// @desc    Update product category/details (Admin)
+// @route   PUT /api/products/:asin
+// @access  Private/Admin
+exports.updateProduct = asyncHandler(async (req, res) => {
+  const { asin } = req.params;
+  const { category, searchIndex } = req.body;
+
+  let product = await Product.findOne({ asin });
+
+  if (!product) {
+    // Create if not exists (upsert logic)
+    product = new Product({
+      asin,
+      category,
+      searchIndex: searchIndex || amazonApiService.resolveSearchIndex(category),
+      // Set other defaults if needed, or fetch from Amazon to populate
+      title: req.body.title || 'Unknown Product',
+    });
+  } else {
+    if (category) {
+      product.category = category;
+      // Auto-update searchIndex if not provided explicitly, based on SMART_MAP
+      if (!searchIndex) {
+        product.searchIndex = amazonApiService.resolveSearchIndex(category);
+      }
+    }
+    if (searchIndex) product.searchIndex = searchIndex;
+  }
+
+  await product.save();
+
+  return sendSuccess(res, product, 'Product updated successfully');
+});
+
+// @desc    Get detailed product info including local DB state and Smart Map resolution
+// @route   GET /api/products/:asin/details
+// @access  Private
+exports.getProductDetails = asyncHandler(async (req, res) => {
+  const { asin } = req.params;
+
+  // 1. Local Lookup
+  const localProduct = await Product.findOne({ asin });
+
+  // 2. Resolve Smart Category
+  let smartCategory = 'All';
+  if (localProduct && localProduct.category) {
+    smartCategory = amazonApiService.resolveSearchIndex(localProduct.category);
+  }
+
+  // 3. Amazon Lookup (optional here, but useful for verifying)
+  // const amazonResult = await amazonApiService.getItems(asin);
+
+  return sendSuccess(res, {
+    localProduct,
+    smartCategory,
+    // amazonData: amazonResult.data
+  }, 'Product details retrieved');
 });
 
 // @desc    Search products by keyword

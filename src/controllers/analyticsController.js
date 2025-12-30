@@ -2,6 +2,7 @@ const ProductClick = require('../models/ProductClick');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const Category = require('../models/Category');
+const amazonApiService = require('../services/amazonApiService');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess, sendError, sendValidationError } = require('../utils/responseHandler');
 
@@ -58,6 +59,13 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
     let commissionPercentage = 0.02; // Default 2%
     let finalCategory = category;
 
+    // 0. Normalize category using Smart Map before looking up in DB
+    const resolvedIndex = amazonApiService.resolveSearchIndex(finalCategory);
+    if (resolvedIndex !== 'All') {
+        finalCategory = resolvedIndex;
+        console.log(`[Affiliate] Resolved input category '${category}' to '${finalCategory}' via Smart Map`);
+    }
+
     // 1. Try to match by explicit category if provided and valid
     if (finalCategory && finalCategory !== 'Uncategorized' && finalCategory !== 'Unknown') {
         const escapedCategory = finalCategory.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -91,24 +99,85 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
 
         // A weak helper map for common uncategorized terms -> Likely Category Name partial
         const SMART_MAP = {
-            'fresh': 'Grocery',
-            'vegetable': 'Grocery',
-            'fruit': 'Grocery',
-            'food': 'Grocery',
-            'snack': 'Grocery',
-            'chocolate': 'Grocery',
+            // Electronics & TV
+            'tv': 'Electronics',
+            'television': 'Electronics',
+            'televisions': 'Electronics',
+            'smart televisions': 'Electronics',
+            'led tv': 'Electronics',
+            'smart led tv': 'Electronics',
+            'led': 'Electronics',
+            'lcd': 'Electronics',
+            'monitor': 'Electronics',
+            'phone': 'Electronics',
+            'mobile': 'Electronics',
+            'tablet': 'Electronics',
+            'camera': 'Electronics',
+            'headphone': 'Electronics',
+            'earphone': 'Electronics',
+            'speaker': 'Electronics',
+            'laptop': 'Computers',
+            'computer': 'Computers',
+            'macbook': 'Computers',
+            'keyboard': 'Computers',
+            'mouse': 'Computers',
+            // Watches
+            'watch': 'Watches',
+            'clock': 'Watches',
+            'timepiece': 'Watches',
+            // Home & Appliances
+            'fridge': 'Appliances',
+            'refrigerator': 'Appliances',
+            'washing machine': 'Appliances',
+            'ac': 'Appliances',
+            'air conditioner': 'Appliances',
+            'microwave': 'Appliances',
+            'kitchen': 'HomeAndKitchen',
+            'home': 'HomeAndKitchen',
+            'furniture': 'Furniture',
+            // Beauty & Personal Care
+            'soap': 'Beauty',
+            'shampoo': 'Beauty',
+            'cream': 'Beauty',
+            'makeup': 'Beauty',
+            'perfume': 'Beauty',
+            'hair': 'Beauty',
+            // Fashion
             'shirt': 'Fashion',
             'pant': 'Fashion',
+            'jeans': 'Fashion',
             'shoe': 'Shoes',
-            'soap': 'Beauty',
-            'shampoo': 'Beauty'
+            'sandal': 'Shoes',
+            'sneaker': 'Shoes',
+            'bag': 'Luggage',
+            'luggage': 'Luggage',
+            'wallet': 'Luggage',
+            // Grocery
+            'fresh': 'GroceryAndGourmetFood',
+            'vegetable': 'GroceryAndGourmetFood',
+            'fruit': 'GroceryAndGourmetFood',
+            'food': 'GroceryAndGourmetFood',
+            'snack': 'GroceryAndGourmetFood',
+            'chocolate': 'GroceryAndGourmetFood',
+            'oil': 'GroceryAndGourmetFood',
+            'rice': 'GroceryAndGourmetFood',
+            'tea': 'GroceryAndGourmetFood',
+            'coffee': 'GroceryAndGourmetFood'
         };
 
         // Check Smart Map first
         for (const [term, targetCatPartial] of Object.entries(SMART_MAP)) {
-            if (productName.toLowerCase().includes(term)) {
+            // Use word boundary check to avoid false positives (e.g. 'led' in 'sealed')
+            // Escape special chars in term just in case
+            const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`\\b${escapedTerm}\\b`, 'i');
+
+            if (regex.test(productName)) {
                 // Find the actual category object that matches our target partial
-                const smartMatch = categories.find(c => c.name.includes(targetCatPartial) || c.amazonSearchIndex.includes(targetCatPartial));
+                const smartMatch = categories.find(c =>
+                    c.name.toLowerCase().includes(targetCatPartial.toLowerCase()) ||
+                    c.amazonSearchIndex === targetCatPartial
+                );
                 if (smartMatch) {
                     if (smartMatch.percentage > 0) {
                         commissionPercentage = smartMatch.percentage / 100;
@@ -130,11 +199,14 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
                 const keywords = [cat.name, ...(cat.searchQueries || [])];
 
                 for (const keyword of keywords) {
-                    if (!keyword) continue;
-                    // strict word boundary check might be too strict for partials, let's use simple inclusion (case-insensitive)
-                    // but careful about short words.
-                    // switch to safe string inclusion (case-insensitive) to avoid regex errors with special chars
-                    if (keyword.length > 2 && productName.toLowerCase().includes(keyword.toLowerCase())) {
+                    if (!keyword || keyword.length < 3) continue; // Skip very short keywords
+
+                    // Use word boundary for better accuracy
+                    // Escape special characters in keyword for regex
+                    const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const keywordRegex = new RegExp(`\\b${escapedKeyword}\\b`, 'i');
+
+                    if (keywordRegex.test(productName)) {
                         matched = true;
                         // console.log(`Matched keyword: ${keyword}`);
                         break;

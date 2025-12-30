@@ -1,6 +1,73 @@
 const axios = require('axios');
 const crypto = require('crypto');
 
+const SMART_MAP = {
+  // Electronics & Gadgets
+  'Electronics': 'Electronics',
+  'Mobiles': 'Electronics',
+  'Tablets': 'Electronics',
+  'Laptops': 'Computers',
+  'Computers': 'Computers',
+  'Cameras': 'Electronics',
+  'Headphones': 'Electronics',
+  'Accessories': 'Electronics',
+  'Smart Home': 'Electronics',
+  'Wearables': 'Electronics',
+  'TV': 'Electronics',
+  'Television': 'Electronics',
+  'Televisions': 'Electronics',
+  'Smart Televisions': 'Electronics',
+  'LED TV': 'Electronics',
+  'Smart LED TV': 'Electronics',
+
+  // Fashion
+  'Fashion': 'Fashion',
+  'Men': 'Apparel',
+  'Women': 'Apparel',
+  'Kids': 'Apparel',
+  'Clothing': 'Apparel',
+  'Shoes': 'Shoes',
+  'Watches': 'Watches',
+  'Jewelry': 'Jewelry',
+  'Bags': 'Apparel',
+
+  // Home & Living
+  'Home': 'HomeAndKitchen',
+  'Kitchen': 'HomeAndKitchen',
+  'Furniture': 'Furniture',
+  'Decor': 'HomeAndKitchen',
+  'Appliances': 'Appliances',
+  'Garden': 'GardenAndOutdoor',
+  'Tools': 'ToolsAndHomeImprovement',
+
+  // Essentials
+  'Beauty': 'Beauty',
+  'Health': 'HealthPersonalCare',
+  'Personal Care': 'HealthPersonalCare',
+  'Groceries': 'GroceryAndGourmetFood',
+  'Baby': 'Baby',
+  'Pet Supplies': 'PetSupplies',
+
+  // Entertainment
+  'Books': 'Books',
+  'Toys': 'ToysAndGames',
+  'Games': 'VideoGames',
+  'Video Games': 'VideoGames',
+  'Music': 'Music',
+  'Movies': 'MoviesAndTV',
+  'Sports': 'SportsAndOutdoors',
+  'Fitness': 'SportsAndOutdoors',
+
+  // Auto
+  'Automotive': 'Automotive',
+  'Car Accessories': 'Automotive',
+
+  // Others
+  'Gift Cards': 'GiftCards',
+  'Office': 'OfficeProducts',
+  'Industrial': 'Industrial'
+};
+
 class AmazonAPIService {
   constructor() {
     this.accessKey = process.env.AWS_ACCESS_KEY;
@@ -206,6 +273,39 @@ class AmazonAPIService {
     return {
       authorization,
     };
+  }
+
+  /**
+   * Resolve Amazon SearchIndex from a generic category name
+   * @param {string} category - The category name (e.g., "Mobiles", "Men's Fashion")
+   * @returns {string} The corresponding Amazon SearchIndex (e.g., "Electronics", "Apparel")
+   */
+  resolveSearchIndex(category) {
+    if (!category) return 'All';
+
+    // 1. Check exact match
+    if (SMART_MAP[category]) {
+      return SMART_MAP[category];
+    }
+
+    // 2. Check case-insensitive match
+    const lowerCategory = category.toLowerCase();
+    const mapKey = Object.keys(SMART_MAP).find(k => k.toLowerCase() === lowerCategory);
+    if (mapKey) {
+      return SMART_MAP[mapKey];
+    }
+
+    // 3. Check if category contains a keyword from map
+    // Sort keys by length (descending) to match specific terms first (e.g., "Video Games" before "Games")
+    const sortedKeys = Object.keys(SMART_MAP).sort((a, b) => b.length - a.length);
+    for (const key of sortedKeys) {
+      if (lowerCategory.includes(key.toLowerCase())) {
+        return SMART_MAP[key];
+      }
+    }
+
+    // 4. Fallback to 'All'
+    return 'All';
   }
 
   // Make authenticated request to Amazon API
