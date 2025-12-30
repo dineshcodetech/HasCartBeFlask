@@ -175,7 +175,7 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
                 type: 'earnings',
                 amount: commissionAmount,
                 status: 'pending', // Requires manual approval now
-                description: `Pending Commission (${(commissionPercentage * 100).toFixed(1)}%): ${productName}`,
+                description: `Pending Commission : ${productName}`,
                 referenceId: productClick._id,
                 referenceModel: 'ProductClick'
             });

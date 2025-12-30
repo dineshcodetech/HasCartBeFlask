@@ -30,7 +30,9 @@ class AmazonAPIService {
         'Offers.Listings.Condition',
         'Offers.Listings.DeliveryInfo.IsPrimeEligible',
         'CustomerReviews.StarRating',
-        'CustomerReviews.Count'
+        'CustomerReviews.Count',
+        'BrowseNodeInfo.BrowseNodes',
+        'ItemInfo.Classifications'
       ];
 
     this.defaultGetItemsResources = process.env.AWS_GETITEMS_RESOURCES
@@ -46,7 +48,9 @@ class AmazonAPIService {
         'Offers.Listings.Condition',
         'Offers.Listings.DeliveryInfo.IsPrimeEligible',
         'CustomerReviews.StarRating',
-        'CustomerReviews.Count'
+        'CustomerReviews.Count',
+        'BrowseNodeInfo.BrowseNodes',
+        'ItemInfo.Classifications'
       ];
 
     console.log('[Amazon API] Initialized:', {

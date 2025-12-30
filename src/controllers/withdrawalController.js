@@ -76,6 +76,21 @@ exports.getUserWithdrawals = asyncHandler(async (req, res) => {
     query.status = status;
   }
 
+  // Date Filtering
+  if (req.query.startDate || req.query.endDate) {
+    const dateFilter = {};
+    if (req.query.startDate) {
+      dateFilter.$gte = new Date(req.query.startDate);
+    }
+    if (req.query.endDate) {
+      // Set end date to end of day
+      const endDate = new Date(req.query.endDate);
+      endDate.setHours(23, 59, 59, 999);
+      dateFilter.$lte = endDate;
+    }
+    query.createdAt = dateFilter;
+  }
+
   const withdrawals = await Withdrawal.find(query)
     .sort({ createdAt: -1 })
     .limit(50);
