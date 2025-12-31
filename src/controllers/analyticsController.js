@@ -310,7 +310,7 @@ exports.getProductClicks = asyncHandler(async (req, res) => {
         .limit(limitNum);
 
     // For each click, find the associated transaction status
-    const clicksWithStatus = await Promise.all(clicks.map(async (click) => {
+    let clicksWithStatus = await Promise.all(clicks.map(async (click) => {
         const transaction = await Transaction.findOne({
             referenceId: click._id,
             referenceModel: 'ProductClick'
@@ -324,13 +324,24 @@ exports.getProductClicks = asyncHandler(async (req, res) => {
         };
     }));
 
+    // Filter by status if provided (since status is in Transaction, not ProductClick)
+    if (req.query.status) {
+        const status = req.query.status;
+        clicksWithStatus = clicksWithStatus.filter(click => {
+            if (status === 'none' || status === 'ineligible') {
+                return click.commissionStatus === 'none';
+            }
+            return click.commissionStatus === status;
+        });
+    }
+
     return sendSuccess(res, {
         clicks: clicksWithStatus,
         pagination: {
             page: pageNum,
             limit: limitNum,
-            total,
-            totalPages: Math.ceil(total / limitNum),
+            total: req.query.status ? clicksWithStatus.length : total,
+            totalPages: req.query.status ? Math.ceil(clicksWithStatus.length / limitNum) : Math.ceil(total / limitNum),
         },
     }, 'Click data retrieved successfully');
 });
@@ -404,22 +415,51 @@ exports.updateClickCommission = asyncHandler(async (req, res) => {
 // @access  Private
 exports.getMyProductClicks = asyncHandler(async (req, res) => {
     const userId = req.user.id;
-    const { page = 1, limit = 20 } = req.query;
+    const {
+        page = 1,
+        limit = 20,
+        startDate,
+        endDate,
+        status,
+        category
+    } = req.query;
 
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 20;
     const skip = (pageNum - 1) * limitNum;
 
-    // Find clicks
-    const clicks = await ProductClick.find({ agent: userId })
+    // Build query
+    const query = { agent: userId };
+
+    // Date filters
+    if (startDate || endDate) {
+        query.createdAt = {};
+        if (startDate) {
+            query.createdAt.$gte = new Date(startDate);
+        }
+        if (endDate) {
+            // Set end date to end of day
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            query.createdAt.$lte = end;
+        }
+    }
+
+    // Category filter
+    if (category && category !== 'All') {
+        query.category = category;
+    }
+
+    // Find clicks with query
+    const clicks = await ProductClick.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum);
 
-    const total = await ProductClick.countDocuments({ agent: userId });
+    const total = await ProductClick.countDocuments(query);
 
     // For each click, find the associated transaction status
-    const clicksWithStatus = await Promise.all(clicks.map(async (click) => {
+    let clicksWithStatus = await Promise.all(clicks.map(async (click) => {
         const transaction = await Transaction.findOne({
             referenceId: click._id,
             referenceModel: 'ProductClick'
@@ -432,13 +472,23 @@ exports.getMyProductClicks = asyncHandler(async (req, res) => {
         };
     }));
 
+    // Filter by status if provided (since status is in Transaction, not ProductClick)
+    if (status) {
+        clicksWithStatus = clicksWithStatus.filter(click => {
+            if (status === 'none') {
+                return click.commissionStatus === 'none';
+            }
+            return click.commissionStatus === status;
+        });
+    }
+
     return sendSuccess(res, {
         clicks: clicksWithStatus,
         pagination: {
             page: pageNum,
             limit: limitNum,
-            total,
-            totalPages: Math.ceil(total / limitNum)
+            total: status ? clicksWithStatus.length : total,
+            totalPages: status ? Math.ceil(clicksWithStatus.length / limitNum) : Math.ceil(total / limitNum)
         }
     }, 'Agent clicks retrieved successfully');
 });
