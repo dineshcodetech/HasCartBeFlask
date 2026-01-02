@@ -35,7 +35,7 @@ app.get('/api/ping', (req, res) => {
   res.json({
     success: true,
     message: 'pong',
-    version: '1.0.0',
+    version: '1.0.1',
     versionCode: 1,
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development'

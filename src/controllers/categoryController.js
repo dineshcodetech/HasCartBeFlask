@@ -91,7 +91,7 @@ exports.createCategory = asyncHandler(async (req, res) => {
         percentage: percentageNum,
         status: status || 'active',
         amazonSearchIndex: amazonSearchIndex || 'All',
-        icon: icon || 'grid-view',
+        icon: icon || 'grid_view',
         searchQueries: searchQueries || (searchQuery ? [searchQuery.trim()] : []),
         selectedProducts: selectedProducts || [],
     });

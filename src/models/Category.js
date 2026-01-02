@@ -31,7 +31,7 @@ const categorySchema = new mongoose.Schema(
     icon: {
       type: String,
       trim: true,
-      default: 'grid-view',
+      default: 'grid_view',
     },
     searchQueries: {
       type: [String],

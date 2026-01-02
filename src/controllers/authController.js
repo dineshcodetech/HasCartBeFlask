@@ -57,6 +57,7 @@ exports.login = asyncHandler(async (req, res) => {
       email: user.email,
       mobile: user.mobile,
       role: user.role,
+      referralCode: user.referralCode,
     },
   });
 });
@@ -143,6 +144,7 @@ exports.signup = asyncHandler(async (req, res) => {
       email: user.email,
       mobile: user.mobile,
       role: user.role,
+      referralCode: user.referralCode,
     },
   });
 });
@@ -243,6 +245,15 @@ exports.resetPassword = asyncHandler(async (req, res) => {
 // @route   GET /api/auth/me
 // @access  Private
 exports.getMe = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user.id);
-  return sendSuccess(res, user, 'User retrieved successfully');
+  const user = await User.findById(req.user.id).select('+referralCode');
+  return sendSuccess(res, {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    mobile: user.mobile,
+    role: user.role,
+    referralCode: user.referralCode,
+    balance: user.balance,
+    totalEarnings: user.totalEarnings
+  }, 'User retrieved successfully');
 });
