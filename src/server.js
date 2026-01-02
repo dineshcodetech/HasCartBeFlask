@@ -31,12 +31,24 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
+app.get('/api/ping', (req, res) => {
+  res.json({
+    success: true,
+    message: 'pong',
+    version: '1.0.0',
+    versionCode: 1,
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
 app.get('/', (req, res) => {
   res.json({
     message: 'Welcome to HasCart API - Affiliate Marketing Platform',
     version: '1.0.0',
     description: 'Products are fetched from Amazon Product Advertising API',
     endpoints: {
+      ping: '/api/ping',
       auth: '/api/auth',
       users: '/api/users',
       products: '/api/products (Amazon API)',
