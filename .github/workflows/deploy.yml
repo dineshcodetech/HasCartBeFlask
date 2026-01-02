@@ -37,7 +37,11 @@ jobs:
             # Build and start new containers
             sudo docker-compose build --no-cache
             echo "This is the log 39"
-            sudo docker-compose up -d
+            sudo docker-compose up -d --force-recreate
             echo "Deployment completed successfully"
+
+            # 5. Clean up
+            sudo docker image prune -f
+            sudo docker-compose ps
           EOF
 
