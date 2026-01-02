@@ -61,7 +61,7 @@ exports.getCategoryById = asyncHandler(async (req, res) => {
 // @route   POST /api/admin/categories
 // @access  Private/Admin
 exports.createCategory = asyncHandler(async (req, res) => {
-    const { name, description, percentage, status, amazonSearchIndex, searchQuery, searchQueries, selectedProducts } = req.body;
+    const { name, description, percentage, status, amazonSearchIndex, icon, searchQuery, searchQueries, selectedProducts } = req.body;
 
     // Validate required fields
     if (!name) {
@@ -91,6 +91,7 @@ exports.createCategory = asyncHandler(async (req, res) => {
         percentage: percentageNum,
         status: status || 'active',
         amazonSearchIndex: amazonSearchIndex || 'All',
+        icon: icon || 'grid-view',
         searchQueries: searchQueries || (searchQuery ? [searchQuery.trim()] : []),
         selectedProducts: selectedProducts || [],
     });
@@ -102,7 +103,7 @@ exports.createCategory = asyncHandler(async (req, res) => {
 // @route   PUT /api/admin/categories/:id
 // @access  Private/Admin
 exports.updateCategory = asyncHandler(async (req, res) => {
-    const { name, description, percentage, status, amazonSearchIndex, searchQuery, searchQueries, selectedProducts } = req.body;
+    const { name, description, percentage, status, amazonSearchIndex, icon, searchQuery, searchQueries, selectedProducts } = req.body;
 
     const category = await Category.findById(req.params.id);
 
@@ -141,6 +142,10 @@ exports.updateCategory = asyncHandler(async (req, res) => {
             return sendValidationError(res, 'Status must be either active or inactive');
         }
         category.status = status;
+    }
+
+    if (icon !== undefined) {
+        category.icon = icon;
     }
 
     // Update Amazon integration fields if provided

@@ -28,6 +28,11 @@ const categorySchema = new mongoose.Schema(
         'VideoGames', 'Watches'
       ],
     },
+    icon: {
+      type: String,
+      trim: true,
+      default: 'grid-view',
+    },
     searchQueries: {
       type: [String],
       default: [],

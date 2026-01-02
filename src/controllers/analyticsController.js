@@ -57,42 +57,50 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
 
     // Determine commission percentage based on category
     let commissionPercentage = 0.02; // Default 2%
-    let finalCategory = category;
+    let finalCategory = category || 'Uncategorized';
+    let matchedCategory = null;
 
-    // 0. Normalize category using Smart Map before looking up in DB
-    const resolvedIndex = amazonApiService.resolveSearchIndex(finalCategory);
-    if (resolvedIndex !== 'All') {
-        finalCategory = resolvedIndex;
-        console.log(`[Affiliate] Resolved input category '${category}' to '${finalCategory}' via Smart Map`);
-    }
+    console.log(`[Affiliate] Processing click for product: ${productName}, Category: ${category}`);
 
-    // 1. Try to match by explicit category if provided and valid
+    // 1. First priority: Try to match by explicit category name or search queries (exact/regex)
     if (finalCategory && finalCategory !== 'Uncategorized' && finalCategory !== 'Unknown') {
         const escapedCategory = finalCategory.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const searchRegex = new RegExp(`^${escapedCategory}$`, 'i');
 
-        const categoryData = await Category.findOne({
+        matchedCategory = await Category.findOne({
             $or: [
                 { name: { $regex: searchRegex } },
-                { amazonSearchIndex: finalCategory },
                 { searchQueries: { $elemMatch: { $regex: searchRegex } } }
             ]
         });
 
-        if (categoryData) {
-            if (categoryData.percentage > 0) {
-                commissionPercentage = categoryData.percentage / 100;
-            }
-            // Normalize category name to the official one for consistency
-            finalCategory = categoryData.name;
-            console.log(`[Affiliate] Matched explicit category: ${finalCategory} (${categoryData.percentage}%)`);
+        if (matchedCategory) {
+            console.log(`[Affiliate] Matched explicit category by name/query: ${matchedCategory.name} (${matchedCategory.percentage}%)`);
         }
     }
 
-    // 2. Fallback: Auto-detect from Product Name if category is missing/unknown/not matched yet
-    // OR if we are still at default percentage (meaning explicit match failed to find a high-value category)
-    if ((!finalCategory || finalCategory === 'Uncategorized' || finalCategory === 'Unknown') || commissionPercentage === 0.02) {
-        console.log(`[Affiliate] Attempting auto-detection for '${productName}' (Input Category: ${category})`);
+    // 2. Second priority: If no direct match, try matching via Smart Map / Amazon Search Index
+    if (!matchedCategory && finalCategory && finalCategory !== 'Uncategorized' && finalCategory !== 'Unknown') {
+        const resolvedIndex = amazonApiService.resolveSearchIndex(finalCategory);
+        if (resolvedIndex !== 'All') {
+            matchedCategory = await Category.findOne({ amazonSearchIndex: resolvedIndex });
+            if (matchedCategory) {
+                console.log(`[Affiliate] Matched category via Smart Map resolution ('${finalCategory}' -> '${resolvedIndex}'): ${matchedCategory.name} (${matchedCategory.percentage}%)`);
+            }
+        }
+    }
+
+    // 3. Update commission if matched
+    if (matchedCategory) {
+        if (matchedCategory.percentage > 0) {
+            commissionPercentage = matchedCategory.percentage / 100;
+        }
+        finalCategory = matchedCategory.name;
+    }
+
+    // 4. Fallback: Auto-detect from Product Name if still at default or no match
+    if (!matchedCategory || commissionPercentage === 0.02) {
+        console.log(`[Affiliate] Attempting auto-detection for '${productName}' (Current Category: ${finalCategory})`);
 
         // Fetch all potential categories to match against product name
         const categories = await Category.find({ status: 'active' });
@@ -247,11 +255,11 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
                 type: 'earnings',
                 amount: commissionAmount,
                 status: 'pending', // Requires manual approval now
-                description: `Pending Commission : ${productName}`,
+                description: `Pending Commission (${(commissionPercentage * 100).toFixed(1)}%): ${productName}`,
                 referenceId: productClick._id,
                 referenceModel: 'ProductClick'
             });
-            console.log(`[Commission] Created pending transaction for agent: ${agentId} at ${commissionPercentage * 100}%`);
+            console.log(`[Commission] Created pending transaction for agent: ${agentId} at ${(commissionPercentage * 100).toFixed(1)}% (Amount: ${commissionAmount})`);
         }
     }
 
