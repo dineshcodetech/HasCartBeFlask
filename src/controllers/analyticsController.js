@@ -245,6 +245,8 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
         commissionRate: commissionPercentage,
     });
 
+    console.log(`[Affiliate] Saved click with rate: ${commissionPercentage} (${(commissionPercentage * 100).toFixed(2)}%)`);
+
     // Create pending commission transaction (requires admin approval)
     if (agentId && price > 0) {
         const commissionAmount = price * commissionPercentage;
@@ -255,11 +257,11 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
                 type: 'earnings',
                 amount: commissionAmount,
                 status: 'pending', // Requires manual approval now
-                description: `Pending Commission (${(commissionPercentage * 100).toFixed(1)}%): ${productName}`,
+                description: `Pending Commission (${(commissionPercentage * 100).toFixed(2)}%): ${productName}`,
                 referenceId: productClick._id,
                 referenceModel: 'ProductClick'
             });
-            console.log(`[Commission] Created pending transaction for agent: ${agentId} at ${(commissionPercentage * 100).toFixed(1)}% (Amount: ${commissionAmount})`);
+            console.log(`[Commission] Created pending transaction for agent: ${agentId} at ${(commissionPercentage * 100).toFixed(2)}% (Amount: ${commissionAmount})`);
         }
     }
 
@@ -359,13 +361,17 @@ exports.getProductClicks = asyncHandler(async (req, res) => {
 // @access  Private/Admin
 exports.updateClickCommission = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    let { commissionRate } = req.body; // Expects percentage like 0.05 or 5
+    let { commissionRate } = req.body; // Expects a percentage value (e.g., 5 for 5%, 0.2 for 0.2%)
 
-    // Normalize rate: if input is like 5, treat as 5% (0.05). If < 1, treat as decimal.
-    // If user explicitly sends 5 (for 5%), we convert.
-    // Standardizing on decimal: e.g. 0.05
-    if (commissionRate > 1) {
-        commissionRate = commissionRate / 100;
+    // Always treat the input from the Admin UI as a percentage and convert to decimal for storage
+    // Example: user enters 0.2 (0.2%) -> we save 0.002
+    let decimalRate = 0;
+    const sanitizedRate = String(req.body.commissionRate).replace(/[^0-9.]/g, '');
+    
+    if (sanitizedRate && !isNaN(parseFloat(sanitizedRate))) {
+        decimalRate = parseFloat(sanitizedRate) / 100;
+    } else {
+        return sendError(res, 'Invalid commission rate provided', 400);
     }
 
     const click = await ProductClick.findById(id);
@@ -373,28 +379,26 @@ exports.updateClickCommission = asyncHandler(async (req, res) => {
         return sendError(res, 'Product click not found', 404);
     }
 
-    // Update click record (versioning logic can be separate or simple boolean 'isOverridden')
+    // Update click record
     const oldRate = click.commissionRate;
-    click.commissionRate = commissionRate;
+    click.commissionRate = decimalRate;
     await click.save();
 
-    console.log(`[Admin] Updated rate for click ${id}: ${oldRate} -> ${commissionRate}`);
+    console.log(`[Admin] Updated rate for click ${id}: ${oldRate} -> ${decimalRate} (from input: ${req.body.commissionRate})`);
 
     // Update associated Transaction if exists
-    // OR create one if it didn't exist (e.g. was 0 rate before)
     const transaction = await Transaction.findOne({
         referenceId: click._id,
         referenceModel: 'ProductClick'
     });
 
-    const newAmount = click.price * commissionRate;
+    const newAmount = click.price * decimalRate;
 
     if (transaction) {
         if (newAmount > 0) {
             transaction.amount = newAmount;
             // Optionally update description to reflect new rate
-            // But let's keep it simple or append 'Updated'
-            transaction.description = `Commission (${(commissionRate * 100).toFixed(1)}%): ${click.productName} [Updated]`;
+            transaction.description = `Commission (${(decimalRate * 100).toFixed(2)}%): ${click.productName} [Updated]`;
             await transaction.save();
         } else {
             // New amount is 0, maybe delete transaction? Or set to 0?
@@ -409,7 +413,7 @@ exports.updateClickCommission = asyncHandler(async (req, res) => {
             type: 'earnings',
             amount: newAmount,
             status: 'pending',
-            description: `Commission (${(commissionRate * 100).toFixed(1)}%): ${click.productName} [Manual Update]`,
+            description: `Commission (${(decimalRate * 100).toFixed(2)}%): ${click.productName} [Manual Update]`,
             referenceId: click._id,
             referenceModel: 'ProductClick'
         });
