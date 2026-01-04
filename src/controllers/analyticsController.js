@@ -278,10 +278,20 @@ exports.getProductClicks = asyncHandler(async (req, res) => {
         category,
         agentId,
         startDate,
-        endDate
+        endDate,
+        search
     } = req.query;
 
     const query = {};
+
+    // Search filter (Product Name or ASIN)
+    if (search) {
+        const searchRegex = { $regex: search, $options: 'i' };
+        query.$or = [
+            { productName: searchRegex },
+            { asin: searchRegex }
+        ];
+    }
 
     // Filters
     if (category && category !== 'All') {
@@ -367,7 +377,7 @@ exports.updateClickCommission = asyncHandler(async (req, res) => {
     // Example: user enters 0.2 (0.2%) -> we save 0.002
     let decimalRate = 0;
     const sanitizedRate = String(req.body.commissionRate).replace(/[^0-9.]/g, '');
-    
+
     if (sanitizedRate && !isNaN(parseFloat(sanitizedRate))) {
         decimalRate = parseFloat(sanitizedRate) / 100;
     } else {
