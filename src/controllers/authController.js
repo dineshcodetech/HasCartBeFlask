@@ -93,15 +93,16 @@ exports.signup = asyncHandler(async (req, res) => {
   let formattedMobile = null;
   if (mobile) {
     const mobileValidation = validateAndFormatMobile(mobile);
-    if (!mobileValidation.valid) {
-      return sendValidationError(res, 'Mobile number must be 10 digits');
-    }
+    // Remove strict validation error to follow "remove validation of signup"
+    // Just use whatever digits were provided
     formattedMobile = mobileValidation.cleaned;
 
-    // Check if mobile already exists
-    const existingByMobile = await User.findOne({ mobile: formattedMobile });
-    if (existingByMobile) {
-      return sendError(res, 'User with this mobile number already exists', 409);
+    // Check if mobile already exists only if we have a numeric string
+    if (formattedMobile && formattedMobile.length > 0) {
+      const existingByMobile = await User.findOne({ mobile: formattedMobile });
+      if (existingByMobile) {
+        return sendError(res, 'User with this mobile number already exists', 409);
+      }
     }
   }
 
