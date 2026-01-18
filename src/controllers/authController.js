@@ -91,7 +91,7 @@ exports.signup = asyncHandler(async (req, res) => {
 
   // Validate and format mobile if provided
   let formattedMobile = null;
-  if (mobile) {
+  if (mobile && typeof mobile === 'string' && mobile.trim().length > 0) {
     const mobileValidation = validateAndFormatMobile(mobile);
     // Remove strict validation error to follow "remove validation of signup"
     // Just use whatever digits were provided
