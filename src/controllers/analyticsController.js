@@ -25,54 +25,86 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
         price = 0;
     }
 
-    // [SAFETY NET] If price is still 0, try to fetch it from our local Product database first
-    if (price <= 0 && asin) {
-        const localProduct = await Product.findOne({ asin: asin.toUpperCase() });
-        if (localProduct && localProduct.price && localProduct.price.amount > 0) {
-            price = localProduct.price.amount;
-            console.log(`[Affiliate] Price recovered from local database for ${asin}: ${price}`);
-        }
-    }
+    // Force ASIN to uppercase for consistency
+    const cleanAsin = asin ? asin.trim().toUpperCase() : null;
 
-    // [SAFETY NET 2] If price is STILL 0, try to fetch it directly from Amazon API
-    if (price <= 0 && asin) {
+    // [BACKEND PRICE RECOVERY]
+    // If price is missing or 0, we MUST fetch it from either Local DB or Amazon API
+    if (price <= 0 && cleanAsin) {
         try {
-            console.log(`[Affiliate] Price missing for ${asin}. Attempting backend recovery via Amazon API...`);
-            const amazonRes = await amazonApiService.getItems(asin);
+            console.log(`[Affiliate] Price missing for ${cleanAsin}. Starting backend recovery...`);
             
-            if (amazonRes.success && amazonRes.data?.ItemsResult?.Items?.length > 0) {
-                const item = amazonRes.data.ItemsResult.Items[0];
+            // 1. Try local cache first (faster)
+            const localProduct = await Product.findOne({ asin: cleanAsin });
+            if (localProduct && localProduct.price && localProduct.price.amount > 0) {
+                price = localProduct.price.amount;
+                console.log(`[Affiliate] Price recovered from local database for ${cleanAsin}: ₹${price}`);
+            }
+
+            // 2. If still 0, hit Amazon API (The Source of Truth)
+            if (price <= 0) {
+                console.log(`[Affiliate] Not found in local cache. Hitting Amazon API for ${cleanAsin}...`);
+                const amazonRes = await amazonApiService.getItems(cleanAsin);
                 
-                // Extract price from multiple possible paths in Amazon response
-                const listing = item?.Offers?.Listings?.[0];
-                let recoveredPrice = listing?.Price?.Amount || 
-                                     item?.ItemInfo?.ProductInfo?.Price?.Amount ||
-                                     item?.ItemInfo?.ProductInfo?.ListPrice?.Amount;
-                
-                // If we have a display amount but no numeric amount, try to parse it
-                if (!recoveredPrice) {
-                    const displayAmount = listing?.Price?.DisplayAmount || 
-                                          item?.ItemInfo?.ProductInfo?.Price?.DisplayValue;
-                    if (displayAmount) {
-                        const cleanDisplay = displayAmount.replace(/[^0-9.]/g, '');
-                        recoveredPrice = parseFloat(cleanDisplay);
+                if (amazonRes.success && amazonRes.data?.ItemsResult?.Items?.length > 0) {
+                    const item = amazonRes.data.ItemsResult.Items[0];
+                    
+                    // Robust recursive price extraction
+                    const extractPrice = (obj) => {
+                        if (!obj || typeof obj !== 'object') return null;
+                        
+                        // Check common PA-API 5.0 paths
+                        const paths = [
+                            item.Offers?.Listings?.[0]?.Price,
+                            item.ItemInfo?.ProductInfo?.Price,
+                            item.ItemInfo?.ProductInfo?.ListPrice,
+                            item.Offers?.Summaries?.[0]?.LowestPrice
+                        ];
+
+                        for (const p of paths) {
+                            if (p?.Amount && p.Amount > 0) return p.Amount;
+                            if (p?.DisplayAmount || p?.DisplayValue) {
+                                const val = parseFloat((p.DisplayAmount || p.DisplayValue).replace(/[^0-9.]/g, ''));
+                                if (val > 0) return val;
+                            }
+                        }
+                        return null;
+                    };
+
+                    const recoveredPrice = extractPrice(item);
+                    
+                    if (recoveredPrice && recoveredPrice > 0) {
+                        price = recoveredPrice;
+                        console.log(`[Affiliate] Successfully recovered price from Amazon API: ₹${price} for ${cleanAsin}`);
+                        
+                        // Async update local product cache so future clicks are faster
+                        Product.findOneAndUpdate(
+                            { asin: cleanAsin },
+                            { 
+                                $set: { 
+                                    "price.amount": price,
+                                    title: item.ItemInfo?.Title?.DisplayValue || productName,
+                                    imageUrl: item.Images?.Primary?.Large?.URL || imageUrl
+                                } 
+                            },
+                            { upsert: true }
+                        ).catch(e => console.error(`[Affiliate] Cache update failed for ${cleanAsin}:`, e.message));
+                    } else {
+                        console.warn(`[Affiliate] Amazon API returned data but no price found for ${cleanAsin}. Response structure:`, JSON.stringify(item.Offers || item.ItemInfo?.ProductInfo, null, 2));
                     }
-                }
-                
-                if (recoveredPrice && recoveredPrice > 0) {
-                    price = recoveredPrice;
-                    console.log(`[Affiliate] Successfully recovered price from Amazon API: ${price} for ASIN: ${asin}`);
+                } else {
+                    console.error(`[Affiliate] Amazon API price recovery failed for ${cleanAsin}. Success: ${amazonRes.success}, Error:`, amazonRes.error || 'No items returned');
                 }
             }
         } catch (err) {
-            console.error('[Affiliate] Backend price recovery failed:', err.message);
+            console.error(`[Affiliate] Critical error during price recovery for ${cleanAsin}:`, err.message);
         }
     }
 
-
-    if (!asin || !productName) {
+    if (!cleanAsin || !productName) {
         return sendValidationError(res, 'ASIN and Product Name are required');
     }
+
 
     let agentId = providedAgentId || null;
 
