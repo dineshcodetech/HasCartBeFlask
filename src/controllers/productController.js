@@ -213,11 +213,42 @@ exports.getProduct = asyncHandler(async (req, res) => {
     );
   }
 
+  // Cache/Update product in local database
+  try {
+    const item = responseValidation.item;
+    const listing = item?.Offers?.Listings?.[0];
+    const itemPrice = listing?.Price?.Amount || item?.ItemInfo?.ProductInfo?.Price?.Amount || 0;
+    
+    await Product.findOneAndUpdate(
+      { asin: asin.toUpperCase() },
+      {
+        $set: {
+          asin: asin.toUpperCase(),
+          title: item?.ItemInfo?.Title?.DisplayValue || 'Unknown Product',
+          imageUrl: item?.Images?.Primary?.Large?.URL || item?.Images?.Primary?.Medium?.URL || '',
+          productUrl: item?.DetailPageURL || `https://www.amazon.in/dp/${asin}`,
+          category: responseValidation.category || 'Uncategorized',
+          "price.amount": itemPrice,
+          "price.currency": listing?.Price?.Currency || 'INR',
+          isPrimeEligible: listing?.DeliveryInfo?.IsPrimeEligible || false,
+          brand: item?.ItemInfo?.ByLineInfo?.Brand?.DisplayValue || '',
+          features: item?.ItemInfo?.Features?.DisplayValues || [],
+          status: 'active'
+        }
+      },
+      { upsert: true, new: true }
+    );
+    console.log(`[Product] Cached/Updated product detail for ${asin}: ₹${itemPrice}`);
+  } catch (dbErr) {
+    console.error(`[Product] Failed to cache product ${asin}:`, dbErr.message);
+  }
+
   return sendSuccess(
     res,
     { ...responseValidation.item, validated: true },
     'Product retrieved successfully'
   );
+
 });
 
 // @desc    Update product category/details (Admin)

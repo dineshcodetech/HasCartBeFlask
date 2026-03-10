@@ -195,12 +195,12 @@ exports.getDashboard = asyncHandler(async (req, res) => {
     ]),
     ProductClick.aggregate([
       { $match: { createdAt: { $gte: todayStart } } },
-      { $group: { _id: null, total: { $sum: '$price' } } }
+      { $group: { _id: null, total: { $sum: { $multiply: ['$price', '$commissionRate'] } } } }
     ])
   ]);
 
-  // Commission is 2% of price for demo purposes
-  const earningsToday = earningsTodayResult.length > 0 ? (earningsTodayResult[0].total * 0.02) : 0;
+  const earningsToday = earningsTodayResult.length > 0 ? earningsTodayResult[0].total : 0;
+
 
   return sendSuccess(res, {
     totalUsers,

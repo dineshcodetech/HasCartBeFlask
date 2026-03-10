@@ -2,7 +2,9 @@ const ProductClick = require('../models/ProductClick');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const Category = require('../models/Category');
+const Product = require('../models/Product');
 const amazonApiService = require('../services/amazonApiService');
+
 const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess, sendError, sendValidationError } = require('../utils/responseHandler');
 
@@ -23,11 +25,19 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
         price = 0;
     }
 
-    // [SAFETY NET] If price is still 0, try to fetch it directly from Amazon API
-    // This handles old versions of the mobile app or cases where frontend detection failed.
+    // [SAFETY NET] If price is still 0, try to fetch it from our local Product database first
+    if (price <= 0 && asin) {
+        const localProduct = await Product.findOne({ asin: asin.toUpperCase() });
+        if (localProduct && localProduct.price && localProduct.price.amount > 0) {
+            price = localProduct.price.amount;
+            console.log(`[Affiliate] Price recovered from local database for ${asin}: ${price}`);
+        }
+    }
+
+    // [SAFETY NET 2] If price is STILL 0, try to fetch it directly from Amazon API
     if (price <= 0 && asin) {
         try {
-            console.log(`[Affiliate] Price missing for ${asin}. Attempting backend recovery...`);
+            console.log(`[Affiliate] Price missing for ${asin}. Attempting backend recovery via Amazon API...`);
             const amazonRes = await amazonApiService.getItems(asin);
             
             if (amazonRes.success && amazonRes.data?.ItemsResult?.Items?.length > 0) {
@@ -35,17 +45,30 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
                 
                 // Extract price from multiple possible paths in Amazon response
                 const listing = item?.Offers?.Listings?.[0];
-                const recoveredPrice = listing?.Price?.Amount || item?.ItemInfo?.ProductInfo?.Price?.Amount;
+                let recoveredPrice = listing?.Price?.Amount || 
+                                     item?.ItemInfo?.ProductInfo?.Price?.Amount ||
+                                     item?.ItemInfo?.ProductInfo?.ListPrice?.Amount;
                 
-                if (recoveredPrice) {
+                // If we have a display amount but no numeric amount, try to parse it
+                if (!recoveredPrice) {
+                    const displayAmount = listing?.Price?.DisplayAmount || 
+                                          item?.ItemInfo?.ProductInfo?.Price?.DisplayValue;
+                    if (displayAmount) {
+                        const cleanDisplay = displayAmount.replace(/[^0-9.]/g, '');
+                        recoveredPrice = parseFloat(cleanDisplay);
+                    }
+                }
+                
+                if (recoveredPrice && recoveredPrice > 0) {
                     price = recoveredPrice;
-                    console.log(`[Affiliate] Successfully recovered price: ${price} for ASIN: ${asin}`);
+                    console.log(`[Affiliate] Successfully recovered price from Amazon API: ${price} for ASIN: ${asin}`);
                 }
             }
         } catch (err) {
             console.error('[Affiliate] Backend price recovery failed:', err.message);
         }
     }
+
 
     if (!asin || !productName) {
         return sendValidationError(res, 'ASIN and Product Name are required');
@@ -273,7 +296,10 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
 
     // Create pending commission transaction (requires admin approval)
     if (agentId && price > 0) {
-        const commissionAmount = price * commissionPercentage;
+        let commissionAmount = price * commissionPercentage;
+        // Round to 2 decimal places to avoid floating point issues
+        commissionAmount = Math.round(commissionAmount * 100) / 100;
+        
         if (commissionAmount > 0) {
             // Create transaction record in PENDING state
             await Transaction.create({
@@ -288,6 +314,7 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
             console.log(`[Commission] Created pending transaction for agent: ${agentId} at ${(commissionPercentage * 100).toFixed(2)}% (Amount: ${commissionAmount})`);
         }
     }
+
 
     return sendSuccess(res, productClick, 'Click tracked successfully', 201);
 });
