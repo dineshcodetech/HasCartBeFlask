@@ -23,6 +23,30 @@ exports.trackProductClick = asyncHandler(async (req, res) => {
         price = 0;
     }
 
+    // [SAFETY NET] If price is still 0, try to fetch it directly from Amazon API
+    // This handles old versions of the mobile app or cases where frontend detection failed.
+    if (price <= 0 && asin) {
+        try {
+            console.log(`[Affiliate] Price missing for ${asin}. Attempting backend recovery...`);
+            const amazonRes = await amazonApiService.getItems(asin);
+            
+            if (amazonRes.success && amazonRes.data?.ItemsResult?.Items?.length > 0) {
+                const item = amazonRes.data.ItemsResult.Items[0];
+                
+                // Extract price from multiple possible paths in Amazon response
+                const listing = item?.Offers?.Listings?.[0];
+                const recoveredPrice = listing?.Price?.Amount || item?.ItemInfo?.ProductInfo?.Price?.Amount;
+                
+                if (recoveredPrice) {
+                    price = recoveredPrice;
+                    console.log(`[Affiliate] Successfully recovered price: ${price} for ASIN: ${asin}`);
+                }
+            }
+        } catch (err) {
+            console.error('[Affiliate] Backend price recovery failed:', err.message);
+        }
+    }
+
     if (!asin || !productName) {
         return sendValidationError(res, 'ASIN and Product Name are required');
     }
